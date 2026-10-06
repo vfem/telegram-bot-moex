@@ -140,6 +140,6 @@ Write-Host "`nRunning post-deployment sanity check..." -ForegroundColor Cyan
 Write-Host "`n=======================================================" -ForegroundColor Green
 Write-Host "🎉 DEPLOYMENT COMPLETE!" -ForegroundColor Green
 Write-Host "   Service URL:    $serviceUrl" -ForegroundColor Cyan
-Write-Host "   Health Check:   $serviceUrl/healthz" -ForegroundColor Cyan
+Write-Host "   Health Check:   $serviceUrl/health" -ForegroundColor Cyan
 Write-Host "   Webhook:        $serviceUrl/webhook" -ForegroundColor Cyan
 Write-Host "=======================================================`n" -ForegroundColor Green

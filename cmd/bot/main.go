@@ -48,11 +48,14 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", bot.WebhookHandler)
 	mux.HandleFunc("/cron/daily-digest", bot.CronDailyDigestHandler)
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	healthHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"moex-spbe-bonds-bot"}`))
-	})
+	}
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/ping", healthHandler)
 
 	server := &http.Server{
 		Addr:    ":" + port,
