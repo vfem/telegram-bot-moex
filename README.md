@@ -2,6 +2,7 @@
 
 [![CI - Tests & Sanity](https://github.com/vfem/telegram-bot-moex/actions/workflows/ci.yml/badge.svg)](https://github.com/vfem/telegram-bot-moex/actions/workflows/ci.yml)
 [![CD - Deploy to Cloud Run](https://github.com/vfem/telegram-bot-moex/actions/workflows/deploy.yml/badge.svg)](https://github.com/vfem/telegram-bot-moex/actions/workflows/deploy.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 A lightweight, serverless Telegram bot in **Go** that delivers Russian debt market data (Moscow Exchange and Saint Petersburg Exchange) on demand and via automated scheduled digests.
 
@@ -148,5 +149,11 @@ See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYM
 - **Features Decomposition & Task Registry:** [`docs/FEATURES_DECOMPOSITION.md`](docs/FEATURES_DECOMPOSITION.md)
 - **Deployment Guide & Free Tier Audit:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - **AI Agent Guidelines & Maintenance Policy:** [`AGENTS.md`](AGENTS.md)
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 
