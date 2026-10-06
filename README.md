@@ -106,3 +106,13 @@ go test -v ./tests/bdd
      --uri="https://<YOUR_CLOUD_RUN_URL>/cron/daily-digest" \
      --http-method=POST
    ```
+
+---
+
+## Product Roadmap & Documentation
+
+- **Initiative Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- **MVP Delivery Stages:** [`docs/MVP_STAGES.md`](docs/MVP_STAGES.md)
+- **Features Decomposition & Task Registry:** [`docs/FEATURES_DECOMPOSITION.md`](docs/FEATURES_DECOMPOSITION.md)
+- **AI Agent Guidelines & Maintenance Policy:** [`AGENTS.md`](AGENTS.md)
+

@@ -22,14 +22,22 @@ type mockRoundTripper struct {
 
 func (m *mockRoundTripper) Do(req *http.Request) (*http.Response, error) {
 	urlStr := req.URL.String()
+	var bestMatchKey string
+	var bestBody string
 	for key, body := range m.responses {
 		if strings.Contains(urlStr, key) {
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(body)),
-				Header:     make(http.Header),
-			}, nil
+			if len(key) > len(bestMatchKey) {
+				bestMatchKey = key
+				bestBody = body
+			}
 		}
+	}
+	if bestMatchKey != "" {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(bestBody)),
+			Header:     make(http.Header),
+		}, nil
 	}
 	return &http.Response{
 		StatusCode: http.StatusNotFound,
