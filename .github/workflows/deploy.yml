@@ -1,12 +1,12 @@
 name: CD - Deploy to GCP Cloud Run
 
 on:
-  push:
-    branches: [ master ]
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'GitHub environment to deploy from'
+        required: false
+        default: 'generic-env'
 
 concurrency:
   group: production-deployment
@@ -36,6 +36,7 @@ jobs:
     name: Deploy to Google Cloud Run
     needs: test
     runs-on: ubuntu-latest
+    environment: generic-env
     permissions:
       contents: read
       id-token: write
@@ -53,15 +54,6 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
-
-      - name: Enable GCP Services
-        run: |
-          gcloud services enable \
-            run.googleapis.com \
-            cloudbuild.googleapis.com \
-            artifactregistry.googleapis.com \
-            cloudscheduler.googleapis.com \
-            --project "${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}"
 
       - name: Deploy to Cloud Run (Free Tier Guardrails)
         id: deploy
