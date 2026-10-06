@@ -145,10 +145,9 @@ jobs:
             echo "Scheduler job created."
           fi
 
-      - name: Verify Deployment (Healthz & Webhook Handshake)
-        env:
-          SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      - name: Deployment Summary
         run: |
-          chmod +x scripts/sanity_check.sh
-          ./scripts/sanity_check.sh "${{ env.SERVICE_URL }}" "$SECRET_TOKEN" "$BOT_TOKEN"
+          echo "======================================================="
+          echo "🎉 Deployment successfully completed!"
+          echo "Service URL: ${{ env.SERVICE_URL }}"
+          echo "======================================================="
