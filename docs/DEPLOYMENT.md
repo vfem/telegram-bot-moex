@@ -131,56 +131,28 @@ The repository includes pre-configured GitHub Actions workflows in `.github/work
 1. **`ci.yml` (CI - Tests & Sanity):** Automatically runs Go verification, BDD scenarios (`tests/bdd`), and compilation on all PRs and pushes to `master`.
 2. **`deploy.yml` (CD - Deploy to Cloud Run):** Triggered automatically on push to `master` (excluding doc edits) and via manual `workflow_dispatch`. Runs tests, authenticates to GCP, deploys to Cloud Run with Free Tier guardrails, sets the Telegram webhook, configures Cloud Scheduler, and runs smoke tests.
 
+### Keyless Authentication via Workload Identity Federation (WIF)
+
+> [!NOTE]
+> Google Cloud enforces the security policy `constraints/iam.disableServiceAccountKeyCreation`, which prevents downloading vulnerable static JSON private keys.
+> Instead, our GitHub Actions pipeline uses **Workload Identity Federation (WIF)**: keyless authentication via OpenID Connect (OIDC).
+
+The following resources have already been provisioned and configured in GCP:
+- **Workload Identity Pool:** `projects/471922888147/locations/global/workloadIdentityPools/github-pool`
+- **OIDC Provider:** `projects/471922888147/locations/global/workloadIdentityPools/github-pool/providers/github-provider` (scoped strictly to repository `vfem/telegram-bot-moex`)
+- **Service Account:** `github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com`
+- **IAM Roles Assigned:** `run.admin`, `cloudbuild.builds.editor`, `artifactregistry.admin`, `cloudscheduler.admin`, `iam.serviceAccountUser`, and `iam.workloadIdentityUser`.
+
 ### Required GitHub Repository Secrets
 
-Configure these in your GitHub repository (**Settings** ➔ **Secrets and variables** ➔ **Actions** ➔ **New repository secret**):
+Because GCP authentication is fully automated via WIF, you only need to configure your Telegram secrets in GitHub (**Settings** ➔ **Secrets and variables** ➔ **Actions** ➔ **New repository secret**):
 
-| Secret Name | Description | Example / Source |
+| Secret Name | Required? | Description |
 |---|---|---|
-| `GCP_PROJECT_ID` | Google Cloud Project ID | `project-63ecb925-668f-4dff-8d5` |
-| `GCP_SA_KEY` | GCP Service Account private key (JSON) | Generated via `gcloud iam service-accounts keys create` |
-| `TELEGRAM_BOT_TOKEN` | Production Telegram Bot Token | Obtained from [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_SECRET_TOKEN` | Random secret token for webhook verification | Any 32-char alphanumeric secret string |
+| `TELEGRAM_BOT_TOKEN` | **Yes** | Production token obtained from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_SECRET_TOKEN` | Optional | Webhook verification string (e.g. 32-character random string) |
+| `GCP_PROJECT_ID` | Optional | Set if overriding `project-63ecb925-668f-4dff-8d5` |
 
-*(Optional Variables under **Actions** ➔ **Variables**: `GCP_REGION` defaults to `europe-west1`, `SERVICE_NAME` defaults to `moex-bonds-bot`).*
-
-### How to Provision the GCP Service Account for GitHub Actions
-
-Run this one-time setup script with `gcloud` to create the deployer service account and download its key:
-
-```bash
-PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
-SA_NAME="github-deployer"
-SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-
-# 1. Create service account
-gcloud iam service-accounts create "$SA_NAME" \
-  --description="GitHub Actions Cloud Run Deployer" \
-  --display-name="GitHub Actions Deployer" \
-  --project "$PROJECT_ID"
-
-# 2. Grant minimum required deployment roles
-ROLES=(
-  "roles/run.admin"
-  "roles/cloudbuild.builds.editor"
-  "roles/artifactregistry.admin"
-  "roles/cloudscheduler.admin"
-  "roles/iam.serviceAccountUser"
-)
-
-for role in "${ROLES[@]}"; do
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${SA_EMAIL}" \
-    --role="$role"
-done
-
-# 3. Create and download JSON key
-gcloud iam service-accounts keys create sa-key.json \
-  --iam-account="${SA_EMAIL}" \
-  --project "$PROJECT_ID"
-
-echo "Copy the contents of sa-key.json into the GCP_SA_KEY secret in GitHub!"
-```
 
 ---
 
