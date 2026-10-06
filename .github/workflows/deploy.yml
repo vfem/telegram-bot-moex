@@ -42,8 +42,11 @@ jobs:
 
       - name: Verify Required Secrets
         id: check_secrets
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         run: |
-          if [ -z "${{ secrets.GCP_SA_KEY }}" ] || [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then
+          if [ -z "$SA_KEY" ] || [ -z "$PROJECT_ID" ]; then
             echo "::error ::Missing GCP_SA_KEY or GCP_PROJECT_ID secret in GitHub repository settings."
             echo "Please configure repository secrets: GCP_PROJECT_ID, GCP_SA_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_SECRET_TOKEN."
             echo "See docs/DEPLOYMENT.md for step-by-step instructions on generating the service account key."
@@ -99,16 +102,22 @@ jobs:
           echo "Service deployed at: $SERVICE_URL"
 
       - name: Configure Telegram Webhook
-        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
         run: |
-          echo "Registering Telegram webhook with secret token..."
-          TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setWebhook" \
-            -H "Content-Type: application/json" \
-            -d "{\"url\":\"${{ env.SERVICE_URL }}/webhook\",\"secret_token\":\"${{ secrets.TELEGRAM_SECRET_TOKEN }}\",\"drop_pending_updates\":true}")
-          
-          echo "Telegram response: $TG_RESP"
-          if ! echo "$TG_RESP" | grep -q '"ok":true'; then
-            echo "::warning ::Webhook registration returned non-ok response: $TG_RESP"
+          if [ -n "$BOT_TOKEN" ]; then
+            echo "Registering Telegram webhook with secret token..."
+            TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+              -H "Content-Type: application/json" \
+              -d "{\"url\":\"${{ env.SERVICE_URL }}/webhook\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
+            
+            echo "Telegram response: $TG_RESP"
+            if ! echo "$TG_RESP" | grep -q '"ok":true'; then
+              echo "::warning ::Webhook registration returned non-ok response: $TG_RESP"
+            fi
+          else
+            echo "TELEGRAM_BOT_TOKEN not provided, skipping webhook registration."
           fi
 
       - name: Configure Cloud Scheduler (06:00 UTC / 09:00 MSK)
@@ -137,6 +146,9 @@ jobs:
           fi
 
       - name: Verify Deployment (Healthz & Webhook Handshake)
+        env:
+          SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
           chmod +x scripts/sanity_check.sh
-          ./scripts/sanity_check.sh "${{ env.SERVICE_URL }}" "${{ secrets.TELEGRAM_SECRET_TOKEN }}" "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          ./scripts/sanity_check.sh "${{ env.SERVICE_URL }}" "$SECRET_TOKEN" "$BOT_TOKEN"
