@@ -233,7 +233,7 @@ Run the enhanced sanity check script pointing to your deployed Cloud Run service
 Or execute manual curl probes:
 ```bash
 # 1. Health probe
-curl -i "${SERVICE_URL}/healthz"
+curl -i "${SERVICE_URL}/health"
 # HTTP/2 200 OK -> {"status":"healthy","service":"moex-spbe-bonds-bot"}
 
 # 2. Webhook unauthorized probe (must reject)
