@@ -34,3 +34,5 @@ Thumbs.db
 *.key
 *.pem
 credentials.json
+*key*.json
+sa-key.json
