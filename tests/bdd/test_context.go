@@ -22,17 +22,21 @@ type TestContext struct {
 	bondService  *service.BondService
 	subService   *service.SubscriptionService
 	notifier     *service.NotifierService
+	marketCache  *memory.MarketDataCache
 
 	// Scenario state
 	currentUser       *domain.User
 	currentBond       *domain.Bond
+	currentMarketData *domain.MarketData
 	currentPayments   []domain.Payment
+	formattedMessage  string
 	lastError         error
 	todayDate         time.Time
 	resolvedISIN      string
 	resolvedExchange  domain.Exchange
 	mockPayments      map[string][]domain.Payment
 	mockBonds         map[string]domain.Bond
+	mockBondProv      *mockBondProvider
 	lastAnnouncement  domain.Announcement
 	returnedPayments  []domain.Payment
 }
@@ -42,8 +46,10 @@ func newTestContext() *TestContext {
 	spbeClient := spbe.NewClient()
 	moexClient := moex.NewClient(nil)
 	comp := composite.NewProvider(moexClient, spbeClient)
+	mockProv := newMockBondProvider()
+	marketCache := memory.NewMarketDataCache()
 
-	bondSvc := service.NewBondService(comp, memStore)
+	bondSvc := service.NewBondService(comp, memStore, marketCache)
 	subSvc := service.NewSubscriptionService(memStore)
 	notifier := service.NewNotifierService(comp, memStore, nil)
 
@@ -56,6 +62,8 @@ func newTestContext() *TestContext {
 		bondService:  bondSvc,
 		subService:   subSvc,
 		notifier:     notifier,
+		marketCache:  marketCache,
+		mockBondProv: mockProv,
 		mockPayments: make(map[string][]domain.Payment),
 		mockBonds:    make(map[string]domain.Bond),
 	}

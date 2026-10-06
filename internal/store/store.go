@@ -13,3 +13,9 @@ type Store interface {
 	GetUsersSubscribedToDailyPayments(ctx context.Context) ([]*domain.User, error)
 	GetUsersSubscribedToAnnouncements(ctx context.Context) ([]*domain.User, error)
 }
+
+// MarketDataCache defines operations for caching real-time bond quotes and liquidity data.
+type MarketDataCache interface {
+	Get(isin string) (*domain.MarketData, bool)
+	Set(isin string, data *domain.MarketData)
+}

@@ -10,13 +10,14 @@ import (
 
 	"telegram-bot-moex/internal/domain"
 	"telegram-bot-moex/internal/service"
+	"telegram-bot-moex/internal/store/memory"
 )
 
 func registerSubscriptionSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 	mockProv := newMockBondProvider()
 
 	ctx.Step(`^a clean subscription storage$`, func() error {
-		tc.memStore = tc.memStore // already fresh per scenario in InitializeScenario
+		tc.memStore = memory.NewStore()
 		tc.notifier = service.NewNotifierService(mockProv, tc.memStore, nil)
 		tc.subService = service.NewSubscriptionService(tc.memStore)
 		return nil

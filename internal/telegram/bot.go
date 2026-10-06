@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -94,6 +95,8 @@ func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		log.Printf("Telegram SendMessage error (status %d): %s; falling back to plain text", resp.StatusCode, string(respBody))
 		// Fallback to plain text if MarkdownV2 formatting error occurs
 		payload["parse_mode"] = ""
 		body, _ = json.Marshal(payload)
@@ -154,7 +157,7 @@ func (b *Bot) handleMessage(ctx context.Context, msg *Message) {
 			return
 		}
 		query := strings.Join(parts[1:], " ")
-		bond, payments, err := b.bondService.GetBondWithPayments(ctx, query)
+		bond, marketData, payments, err := b.bondService.GetBondDetails(ctx, query)
 		if err != nil {
 			// Try fuzzy search
 			bond, err = b.bondService.SearchBond(ctx, query)
@@ -162,9 +165,10 @@ func (b *Bot) handleMessage(ctx context.Context, msg *Message) {
 				_ = b.SendMessage(ctx, chatID, fmt.Sprintf("Облигация по запросу *%s* не найдена\\.", escapeMarkdown(query)))
 				return
 			}
+			marketData, _ = b.bondService.GetMarketData(ctx, bond.ISIN)
 			payments, _ = b.bondService.GetPaymentsForDate(ctx, time.Now(), []string{bond.ISIN})
 		}
-		_ = b.SendMessage(ctx, chatID, FormatBondPassport(bond, payments))
+		_ = b.SendMessage(ctx, chatID, FormatBondPassport(bond, marketData, payments))
 		return
 	}
 
@@ -219,9 +223,9 @@ func (b *Bot) handleMessage(ctx context.Context, msg *Message) {
 	}
 
 	// Default fallback: treat text as a bond search query
-	bond, payments, err := b.bondService.GetBondWithPayments(ctx, text)
+	bond, marketData, payments, err := b.bondService.GetBondDetails(ctx, text)
 	if err == nil && bond != nil {
-		_ = b.SendMessage(ctx, chatID, FormatBondPassport(bond, payments))
+		_ = b.SendMessage(ctx, chatID, FormatBondPassport(bond, marketData, payments))
 		return
 	}
 

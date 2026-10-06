@@ -112,6 +112,22 @@ func (p *Provider) SearchBonds(ctx context.Context, query string) ([]domain.Bond
 	return merged, nil
 }
 
+// GetMarketData delegates market data lookup to MOEX, then SPBE if needed.
+func (p *Provider) GetMarketData(ctx context.Context, identifier string) (*domain.MarketData, error) {
+	if p.moex != nil {
+		md, err := p.moex.GetMarketData(ctx, identifier)
+		if err == nil && md != nil {
+			return md, nil
+		}
+	}
+
+	if p.spbe != nil {
+		return p.spbe.GetMarketData(ctx, identifier)
+	}
+
+	return nil, nil
+}
+
 // GetNewAnnouncements aggregates new placement announcements from both exchanges.
 func (p *Provider) GetNewAnnouncements(ctx context.Context, since time.Time) ([]domain.Announcement, error) {
 	var merged []domain.Announcement

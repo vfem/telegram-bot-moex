@@ -12,6 +12,7 @@ import (
 
 	"telegram-bot-moex/internal/domain"
 	"telegram-bot-moex/internal/service"
+	"telegram-bot-moex/internal/telegram"
 )
 
 // mockProvider implements provider.BondProvider for controllable testing in BDD scenarios.
@@ -19,6 +20,7 @@ type mockBondProvider struct {
 	bonds        map[string]domain.Bond
 	payments     map[string][]domain.Payment
 	datePayments map[string][]domain.Payment
+	marketData   map[string]*domain.MarketData
 }
 
 func newMockBondProvider() *mockBondProvider {
@@ -26,7 +28,15 @@ func newMockBondProvider() *mockBondProvider {
 		bonds:        make(map[string]domain.Bond),
 		payments:     make(map[string][]domain.Payment),
 		datePayments: make(map[string][]domain.Payment),
+		marketData:   make(map[string]*domain.MarketData),
 	}
+}
+
+func (m *mockBondProvider) GetMarketData(ctx context.Context, identifier string) (*domain.MarketData, error) {
+	if md, ok := m.marketData[identifier]; ok {
+		return md, nil
+	}
+	return nil, nil
 }
 
 func (m *mockBondProvider) GetBond(ctx context.Context, identifier string) (*domain.Bond, error) {
@@ -91,7 +101,7 @@ func (m *mockBondProvider) GetNewAnnouncements(ctx context.Context, since time.T
 }
 
 func registerOnDemandSteps(ctx *godog.ScenarioContext, tc *TestContext) {
-	mockProv := newMockBondProvider()
+	mockProv := tc.mockBondProv
 
 	ctx.Step(`^the bot is running with market data for MOEX and SPB Exchange$`, func() error {
 		// Populate standard mock bonds
@@ -122,15 +132,19 @@ func registerOnDemandSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 		}
 
 		// Rebuild service with the mock provider for on-demand steps
-		tc.bondService = service.NewBondService(mockProv, tc.memStore)
+		tc.bondService = service.NewBondService(mockProv, tc.memStore, tc.marketCache)
 		return nil
 	})
 
 	ctx.Step(`^the user requests bond details for "([^"]*)"$`, func(identifier string) error {
-		bond, payments, err := tc.bondService.GetBondWithPayments(tc.ctx, identifier)
+		bond, marketData, payments, err := tc.bondService.GetBondDetails(tc.ctx, identifier)
 		tc.currentBond = bond
+		tc.currentMarketData = marketData
 		tc.currentPayments = payments
 		tc.lastError = err
+		if bond != nil {
+			tc.formattedMessage = telegram.FormatBondPassport(bond, marketData, payments)
+		}
 		return nil
 	})
 

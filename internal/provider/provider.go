@@ -21,6 +21,9 @@ type BondProvider interface {
 	// SearchBonds searches for bonds by ticker, name, or ISIN substring.
 	SearchBonds(ctx context.Context, query string) ([]domain.BondSummary, error)
 
+	// GetMarketData returns current trading quotes and liquidity for a bond.
+	GetMarketData(ctx context.Context, identifier string) (*domain.MarketData, error)
+
 	// GetNewAnnouncements returns recent new bond placement announcements.
 	GetNewAnnouncements(ctx context.Context, since time.Time) ([]domain.Announcement, error)
 }

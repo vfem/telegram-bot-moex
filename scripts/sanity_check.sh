@@ -32,13 +32,13 @@ else
     echo " [FAIL]"
 fi
 
-# 3. Live MOEX ISS Probe
+# 3. Live MOEX ISS Probe & Integration Test
 echo -n "[3/4] Probing live MOEX ISS API (iss.moex.com)... "
-if curl -s -f -m 10 "https://iss.moex.com/iss/securities/SU26238RMFS4.json?iss.meta=off" | grep -q "description"; then
-    echo " [PASS] (reachable, valid response)"
+if curl -s -f -m 10 "https://iss.moex.com/iss/securities/SU26238RMFS4.json?iss.meta=off" | grep -q "description" && go test -tags=integration ./tests/integration >/dev/null 2>&1; then
+    echo " [PASS] (reachable, live probe tests passed)"
     PASSED=$((PASSED + 1))
 else
-    echo " [FAIL] (could not reach iss.moex.com)"
+    echo " [FAIL] (could not reach iss.moex.com or integration test failed)"
 fi
 
 # 4. Telegram Token Check (Optional)

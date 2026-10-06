@@ -42,14 +42,20 @@ try {
     Write-Host " [FAIL: $_]" -ForegroundColor Red
 }
 
-# 3. Live MOEX ISS Probe
+# 3. Live MOEX ISS Probe & Integration Test
 Write-Host "[3/4] Probing live MOEX ISS API (iss.moex.com)..." -NoNewline
 try {
     $moexUrl = "https://iss.moex.com/iss/securities/SU26238RMFS4.json?iss.meta=off"
     $resp = Invoke-RestMethod -Uri $moexUrl -Method Get -TimeoutSec 10 -Headers @{ "User-Agent" = "BondsBotSanity/1.0" }
     if ($resp -and $resp.description) {
-        Write-Host " [PASS] (reachable, response parsed)" -ForegroundColor Green
-        $passed++
+        $integOutput = go test -tags=integration ./tests/integration 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host " [PASS] (reachable, live probe passed)" -ForegroundColor Green
+            $passed++
+        } else {
+            Write-Host " [FAIL: integration test failed]" -ForegroundColor Red
+            Write-Host $integOutput
+        }
     } else {
         Write-Host " [FAIL: unexpected JSON schema]" -ForegroundColor Red
     }

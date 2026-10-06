@@ -16,7 +16,9 @@ type Bond struct {
 	Ticker          string    `json:"ticker"`
 	Name            string    `json:"name"`
 	Issuer          string    `json:"issuer"`
+	IssuerINN       string    `json:"issuer_inn,omitempty"`
 	Exchange        Exchange  `json:"exchange"`
+	PrimaryBoard    string    `json:"primary_board,omitempty"`
 	NominalValue    float64   `json:"nominal_value"`
 	Currency        string    `json:"currency"`
 	CouponRatePct   float64   `json:"coupon_rate_pct"`

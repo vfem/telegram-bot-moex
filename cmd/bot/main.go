@@ -24,8 +24,9 @@ func main() {
 
 	log.Printf("Starting MOEX & SPBE Bonds Telegram Bot on port %s...", port)
 
-	// In-memory store (or Firestore on GCP)
+	// In-memory store (or Firestore on GCP) and market cache
 	store := memory.NewStore()
+	marketCache := memory.NewMarketDataCache()
 
 	// Unauthenticated exchange providers
 	moexClient := moex.NewClient(nil)
@@ -33,7 +34,7 @@ func main() {
 	compositeProv := composite.NewProvider(moexClient, spbeClient)
 
 	// Business services
-	bondSvc := service.NewBondService(compositeProv, store)
+	bondSvc := service.NewBondService(compositeProv, store, marketCache)
 	subSvc := service.NewSubscriptionService(store)
 
 	var bot *telegram.Bot

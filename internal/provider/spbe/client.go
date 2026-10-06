@@ -154,6 +154,12 @@ func (c *Client) SearchBonds(ctx context.Context, query string) ([]domain.BondSu
 	return results, nil
 }
 
+func (c *Client) GetMarketData(ctx context.Context, identifier string) (*domain.MarketData, error) {
+	// SPBE public CSV listing does not provide live order book stream; return nil gracefully
+	return nil, nil
+}
+
 func (c *Client) GetNewAnnouncements(ctx context.Context, since time.Time) ([]domain.Announcement, error) {
 	return nil, nil
 }
+
