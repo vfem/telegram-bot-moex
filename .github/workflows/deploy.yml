@@ -1,0 +1,142 @@
+name: CD - Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches: [ master ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Pre-deployment Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+          cache: true
+
+      - name: Run BDD Test Suite
+        run: go test -v -count=1 ./tests/bdd
+
+      - name: Run All Tests
+        run: go test -v -count=1 ./...
+
+  deploy:
+    name: Deploy to Google Cloud Run
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Required Secrets
+        id: check_secrets
+        run: |
+          if [ -z "${{ secrets.GCP_SA_KEY }}" ] || [ -z "${{ secrets.GCP_PROJECT_ID }}" ]; then
+            echo "::error ::Missing GCP_SA_KEY or GCP_PROJECT_ID secret in GitHub repository settings."
+            echo "Please configure repository secrets: GCP_PROJECT_ID, GCP_SA_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_SECRET_TOKEN."
+            echo "See docs/DEPLOYMENT.md for step-by-step instructions on generating the service account key."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Enable GCP Services
+        run: |
+          gcloud services enable \
+            run.googleapis.com \
+            cloudbuild.googleapis.com \
+            artifactregistry.googleapis.com \
+            cloudscheduler.googleapis.com \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Deploy to Cloud Run (Free Tier Guardrails)
+        id: deploy
+        env:
+          SERVICE_NAME: ${{ vars.SERVICE_NAME || 'moex-bonds-bot' }}
+          REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
+        run: |
+          echo "Deploying $SERVICE_NAME to region $REGION under GCP Free Tier ($0.00/mo)..."
+          
+          gcloud run deploy "$SERVICE_NAME" \
+            --source . \
+            --project "$PROJECT_ID" \
+            --region "$REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 128Mi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 2 \
+            --concurrency 80 \
+            --timeout 15s \
+            --set-env-vars TELEGRAM_BOT_TOKEN="$BOT_TOKEN",TELEGRAM_SECRET_TOKEN="$SECRET_TOKEN"
+
+          SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format "value(status.url)")
+          echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
+          echo "Service deployed at: $SERVICE_URL"
+
+      - name: Configure Telegram Webhook
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+        run: |
+          echo "Registering Telegram webhook with secret token..."
+          TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/setWebhook" \
+            -H "Content-Type: application/json" \
+            -d "{\"url\":\"${{ env.SERVICE_URL }}/webhook\",\"secret_token\":\"${{ secrets.TELEGRAM_SECRET_TOKEN }}\",\"drop_pending_updates\":true}")
+          
+          echo "Telegram response: $TG_RESP"
+          if ! echo "$TG_RESP" | grep -q '"ok":true'; then
+            echo "::warning ::Webhook registration returned non-ok response: $TG_RESP"
+          fi
+
+      - name: Configure Cloud Scheduler (06:00 UTC / 09:00 MSK)
+        env:
+          REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          SCHEDULER_JOB: "moex-daily-digest"
+        run: |
+          echo "Configuring Cloud Scheduler job..."
+          if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "$SCHEDULER_JOB" \
+              --location "$REGION" \
+              --project "$PROJECT_ID" \
+              --schedule="0 6 * * *" \
+              --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
+              --http-method=POST
+            echo "Scheduler job updated."
+          else
+            gcloud scheduler jobs create http "$SCHEDULER_JOB" \
+              --location "$REGION" \
+              --project "$PROJECT_ID" \
+              --schedule="0 6 * * *" \
+              --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
+              --http-method=POST
+            echo "Scheduler job created."
+          fi
+
+      - name: Verify Deployment (Healthz & Webhook Handshake)
+        run: |
+          chmod +x scripts/sanity_check.sh
+          ./scripts/sanity_check.sh "${{ env.SERVICE_URL }}" "${{ secrets.TELEGRAM_SECRET_TOKEN }}" "${{ secrets.TELEGRAM_BOT_TOKEN }}"

@@ -125,9 +125,68 @@ chmod +x scripts/deploy_cloud_run.sh scripts/sanity_check.sh
 
 ---
 
-## 5. Manual Step-by-Step Deployment Flow
+## 5. GitHub Actions CI/CD Automation
 
-If you prefer executing each step manually or integrating with CI/CD:
+The repository includes pre-configured GitHub Actions workflows in `.github/workflows/`:
+1. **`ci.yml` (CI - Tests & Sanity):** Automatically runs Go verification, BDD scenarios (`tests/bdd`), and compilation on all PRs and pushes to `master`.
+2. **`deploy.yml` (CD - Deploy to Cloud Run):** Triggered automatically on push to `master` (excluding doc edits) and via manual `workflow_dispatch`. Runs tests, authenticates to GCP, deploys to Cloud Run with Free Tier guardrails, sets the Telegram webhook, configures Cloud Scheduler, and runs smoke tests.
+
+### Required GitHub Repository Secrets
+
+Configure these in your GitHub repository (**Settings** ➔ **Secrets and variables** ➔ **Actions** ➔ **New repository secret**):
+
+| Secret Name | Description | Example / Source |
+|---|---|---|
+| `GCP_PROJECT_ID` | Google Cloud Project ID | `project-63ecb925-668f-4dff-8d5` |
+| `GCP_SA_KEY` | GCP Service Account private key (JSON) | Generated via `gcloud iam service-accounts keys create` |
+| `TELEGRAM_BOT_TOKEN` | Production Telegram Bot Token | Obtained from [@BotFather](https://t.me/BotFather) |
+| `TELEGRAM_SECRET_TOKEN` | Random secret token for webhook verification | Any 32-char alphanumeric secret string |
+
+*(Optional Variables under **Actions** ➔ **Variables**: `GCP_REGION` defaults to `europe-west1`, `SERVICE_NAME` defaults to `moex-bonds-bot`).*
+
+### How to Provision the GCP Service Account for GitHub Actions
+
+Run this one-time setup script with `gcloud` to create the deployer service account and download its key:
+
+```bash
+PROJECT_ID="<YOUR_GCP_PROJECT_ID>"
+SA_NAME="github-deployer"
+SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# 1. Create service account
+gcloud iam service-accounts create "$SA_NAME" \
+  --description="GitHub Actions Cloud Run Deployer" \
+  --display-name="GitHub Actions Deployer" \
+  --project "$PROJECT_ID"
+
+# 2. Grant minimum required deployment roles
+ROLES=(
+  "roles/run.admin"
+  "roles/cloudbuild.builds.editor"
+  "roles/artifactregistry.admin"
+  "roles/cloudscheduler.admin"
+  "roles/iam.serviceAccountUser"
+)
+
+for role in "${ROLES[@]}"; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="$role"
+done
+
+# 3. Create and download JSON key
+gcloud iam service-accounts keys create sa-key.json \
+  --iam-account="${SA_EMAIL}" \
+  --project "$PROJECT_ID"
+
+echo "Copy the contents of sa-key.json into the GCP_SA_KEY secret in GitHub!"
+```
+
+---
+
+## 6. Manual Step-by-Step Deployment Flow
+
+If you prefer executing each step manually or inspecting commands:
 
 ### Step 1: Enable GCP Service APIs
 ```bash
@@ -219,9 +278,9 @@ curl -i -X POST "${SERVICE_URL}/webhook" \
 
 ---
 
-## 6. Zero-Cost Maintenance & Monitoring Runbook
+## 7. Zero-Cost Maintenance & Monitoring Runbook
 
-### 6.1. Setting a $0.01 Budget Alert (Recommended)
+### 7.1. Setting a $0.01 Budget Alert (Recommended)
 To ensure peace of mind:
 1. In GCP Console, navigate to **Billing** ➔ **Budgets & alerts**.
 2. Click **Create budget**.
@@ -230,7 +289,7 @@ To ensure peace of mind:
 5. Enable **Email alerts to billing admins**.
 *Result: If any resource ever consumes more than 1 cent, you are immediately alerted.*
 
-### 6.2. Container Registry Storage Cleanup
+### 7.2. Container Registry Storage Cleanup
 Because Artifact Registry free tier includes **0.5 GB**, clean up old container revisions periodically (or keep the 3 latest images):
 ```bash
 # List container images
@@ -240,7 +299,7 @@ gcloud artifacts docker images list europe-west1-docker.pkg.dev/<PROJECT_ID>/clo
 gcloud artifacts docker images delete <IMAGE_PATH> --delete-tags --quiet
 ```
 
-### 6.3. Viewing Live Logs
+### 7.3. Viewing Live Logs
 To stream production logs in real time without opening the web console:
 ```bash
 gcloud beta run logs tail moex-bonds-bot --region europe-west1
@@ -248,7 +307,7 @@ gcloud beta run logs tail moex-bonds-bot --region europe-west1
 
 ---
 
-## 7. Deployment Flow Tracking & Changelog
+## 8. Deployment Flow Tracking & Changelog
 
 This changelog records deployments, configuration changes, and milestone rollouts to maintain traceability.
 
@@ -262,7 +321,7 @@ This changelog records deployments, configuration changes, and milestone rollout
 
 ---
 
-## 8. Summary Checklist Before Production Use
+## 9. Summary Checklist Before Production Use
 
 - [x] Dockerfile produces minimal Alpine image (< 20 MB).
 - [x] `.dockerignore` filters out build artifacts, tests, and documentation.

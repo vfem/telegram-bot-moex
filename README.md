@@ -1,5 +1,8 @@
 # MOEX & SPB Exchange Bonds Telegram Bot
 
+[![CI - Tests & Sanity](https://github.com/vfem/telegram-bot-moex/actions/workflows/ci.yml/badge.svg)](https://github.com/vfem/telegram-bot-moex/actions/workflows/ci.yml)
+[![CD - Deploy to Cloud Run](https://github.com/vfem/telegram-bot-moex/actions/workflows/deploy.yml/badge.svg)](https://github.com/vfem/telegram-bot-moex/actions/workflows/deploy.yml)
+
 A lightweight, serverless Telegram bot in **Go** that delivers Russian debt market data (Moscow Exchange and Saint Petersburg Exchange) on demand and via automated scheduled digests.
 
 Designed for low-load personal or group use on **Google Cloud Platform (GCP)** with an operational cost target of **$0.00 / month** (well within GCP Free Tier).
@@ -87,19 +90,22 @@ The bot is engineered to run 100% within the **GCP Free Tier** (2M requests, 360
 
 See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYMENT.md) for detailed mathematical verification, guardrails, and operational runbook.
 
-### Automated Deployment
+### Deployment Options
 
-```powershell
-# Windows PowerShell
-.\scripts\deploy_cloud_run.ps1 -Region "europe-west1"
-```
+1. **GitHub Actions CI/CD (Recommended):**  
+   Configure repository secrets (`GCP_PROJECT_ID`, `GCP_SA_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`). Every push to `master` automatically runs tests, builds, and deploys to Cloud Run. See [GitHub Actions CI/CD Setup](docs/DEPLOYMENT.md#5-github-actions-cicd-automation).
 
-```bash
-# Linux / macOS
-./scripts/deploy_cloud_run.sh "<PROJECT_ID>" "europe-west1"
-```
+2. **Automated Scripts (Local / Shell):**
+   ```powershell
+   # Windows PowerShell
+   .\scripts\deploy_cloud_run.ps1 -Region "europe-west1"
+   ```
+   ```bash
+   # Linux / macOS
+   ./scripts/deploy_cloud_run.sh "<PROJECT_ID>" "europe-west1"
+   ```
 
-### Manual Deployment
+3. **Manual `gcloud` Execution:**
 
 1. Build and deploy container to Cloud Run with Free Tier guardrails:
    ```bash
