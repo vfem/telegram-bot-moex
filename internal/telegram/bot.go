@@ -134,7 +134,10 @@ func (b *Bot) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if update.Message != nil && update.Message.Text != "" {
-		go b.handleMessage(context.Background(), update.Message)
+		// Process synchronously so Cloud Run CPU throttling does not freeze response dispatch
+		msgCtx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+		defer cancel()
+		b.handleMessage(msgCtx, update.Message)
 	}
 
 	w.WriteHeader(http.StatusOK)

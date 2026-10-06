@@ -81,27 +81,53 @@ go test -v ./tests/bdd
 
 ---
 
-## GCP Cloud Run Deployment (< $10 / month)
+## GCP Cloud Run Deployment ($0.00 / month Free Tier)
 
-1. Build and deploy container to Cloud Run:
+The bot is engineered to run 100% within the **GCP Free Tier** (2M requests, 360k vCPU-s, 180k GiB-s, 1GB egress per month).
+
+See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYMENT.md) for detailed mathematical verification, guardrails, and operational runbook.
+
+### Automated Deployment
+
+```powershell
+# Windows PowerShell
+.\scripts\deploy_cloud_run.ps1 -Region "europe-west1"
+```
+
+```bash
+# Linux / macOS
+./scripts/deploy_cloud_run.sh "<PROJECT_ID>" "europe-west1"
+```
+
+### Manual Deployment
+
+1. Build and deploy container to Cloud Run with Free Tier guardrails:
    ```bash
    gcloud run deploy moex-bonds-bot \
      --source . \
      --region europe-west1 \
+     --platform managed \
      --allow-unauthenticated \
+     --memory 128Mi \
+     --cpu 1 \
+     --min-instances 0 \
+     --max-instances 2 \
+     --concurrency 80 \
+     --timeout 15s \
      --set-env-vars TELEGRAM_BOT_TOKEN="your_token",TELEGRAM_SECRET_TOKEN="your_secret"
    ```
 
 2. Configure Telegram Webhook:
    ```bash
-   curl -F "url=https://<YOUR_CLOUD_RUN_URL>/webhook" \
-        -F "secret_token=your_secret" \
-        https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook
+   curl -s -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
+     -H "Content-Type: application/json" \
+     -d '{"url":"https://<YOUR_CLOUD_RUN_URL>/webhook","secret_token":"your_secret","drop_pending_updates":true}'
    ```
 
-3. Setup Cloud Scheduler for Daily Digests (Free Tier):
+3. Setup Cloud Scheduler for Daily Digests (Free Tier: 1 of 3 free jobs):
    ```bash
    gcloud scheduler jobs create http moex-daily-digest \
+     --location europe-west1 \
      --schedule="0 6 * * *" \
      --uri="https://<YOUR_CLOUD_RUN_URL>/cron/daily-digest" \
      --http-method=POST
@@ -114,5 +140,7 @@ go test -v ./tests/bdd
 - **Initiative Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **MVP Delivery Stages:** [`docs/MVP_STAGES.md`](docs/MVP_STAGES.md)
 - **Features Decomposition & Task Registry:** [`docs/FEATURES_DECOMPOSITION.md`](docs/FEATURES_DECOMPOSITION.md)
+- **Deployment Guide & Free Tier Audit:** [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)
 - **AI Agent Guidelines & Maintenance Policy:** [`AGENTS.md`](AGENTS.md)
+
 

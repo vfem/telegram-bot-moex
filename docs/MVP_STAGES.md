@@ -42,17 +42,18 @@ flowchart LR
 
 ---
 
-### Этап 0 (Stage 0): «Sanity Check & Инфраструктура»
+### Этап 0 (Stage 0): «Sanity Check & Инфраструктура» — ✅ ЗАВЕРШЕНО
 > **Срок реализации:** 0.5–1 день  
 > **Приоритет:** P0 (Обязательный фундамент перед новым кодом)  
+> **Статус:** 100% подготовлено и автоматизировано (`scripts/deploy_cloud_run.ps1` / `.sh`, `scripts/sanity_check.ps1` / `.sh`, аудит Free Tier в `docs/DEPLOYMENT.md`)  
 > **Цель:** *«Убедиться, что текущая кодовая база собирается в Docker, деплоится на GCP Cloud Run, вебхук и секреты Telegram работают, а живые внешние API (MOEX ISS, SPBE) доступны без блокировок»*.
 
 #### 1. Scope (Что входит):
-- `TASK-00-01`: Сборка бинарника и Docker-образа (`Dockerfile` multi-stage build, размер < 20 МБ).
+- `TASK-00-01`: Сборка бинарника и Docker-образа (`Dockerfile` multi-stage build, размер < 20 МБ, `.dockerignore`).
 - `TASK-00-02`: Pre-flight проверка сетевой доступности внешних API (MOEX ISS, SPB Exchange, bo.nalog.ru) без авторизации.
-- `TASK-00-03`: Развертывание в GCP Cloud Run (`gcloud run deploy`) с переменными окружения (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`).
-- `TASK-00-04`: Регистрация и верификация вебхука Telegram (`setWebhook` с секретным токеном в заголовке `X-Telegram-Bot-Api-Secret-Token`).
-- `TASK-00-05`: Автоматизированный скрипт смоук-тестирования (`scripts/sanity_check.ps1` / `scripts/sanity_check.sh`), проверяющий `/healthz`, `/webhook` и команду `/bond SU26238RMFS4`.
+- `TASK-00-03`: Развертывание в GCP Cloud Run (`gcloud run deploy`) с переменными окружения (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`) и guardrails бесплатного тарифа ($0/мес).
+- `TASK-00-04`: Регистрация и верификация вебхука Telegram (`setWebhook` с секретным токеном в заголовке `X-Telegram-Bot-Api-Secret-Token` и синхронным ответом для предотвращения троттлинга CPU).
+- `TASK-00-05`: Автоматизированный скрипт смоук-тестирования (`scripts/sanity_check.ps1` / `scripts/sanity_check.sh`), проверяющий `/healthz`, `/webhook`, безопасность токена и команду `/bond SU26238RMFS4`.
 - `TASK-00-06`: Проверка работоспособности Cloud Scheduler для ежедневного крона (`/cron/daily-digest`).
 
 #### 2. Критерии приемки (Definition of Done):
@@ -60,6 +61,7 @@ flowchart LR
 2. Бот отвечает в Telegram на команду `/bond SU26238RMFS4` реальными данными с MOEX ISS.
 3. Неавторизованные запросы к `/webhook` отклоняются со статусом `401 Unauthorized` / `403 Forbidden`.
 4. Скрипт смоук-чека завершается с кодом 0 (All systems operational).
+5. Подготовлена детальная инструкция деплоя и аудит Free Tier в [`docs/DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
