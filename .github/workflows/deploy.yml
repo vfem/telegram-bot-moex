@@ -105,12 +105,13 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
+          WEBHOOK_URL: ${{ vars.TELEGRAM_WEBHOOK_URL || secrets.TELEGRAM_WEBHOOK_URL || 'https://holy-art-8543.lkane516.workers.dev/webhook' }}
         run: |
           if [ -n "$BOT_TOKEN" ]; then
-            echo "Registering Telegram webhook with secret token..."
+            echo "Registering Telegram webhook pointing to edge proxy ($WEBHOOK_URL)..."
             TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
               -H "Content-Type: application/json" \
-              -d "{\"url\":\"${{ env.SERVICE_URL }}/webhook\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
+              -d "{\"url\":\"${WEBHOOK_URL}\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
             
             echo "Telegram response: $TG_RESP"
             if ! echo "$TG_RESP" | grep -q '"ok":true'; then

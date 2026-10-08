@@ -7,6 +7,7 @@ param(
     [string]$ServiceName = "moex-bonds-bot",
     [string]$BotToken = $env:TELEGRAM_BOT_TOKEN,
     [string]$SecretToken = $env:TELEGRAM_SECRET_TOKEN,
+    [string]$WebhookUrl = "https://holy-art-8543.lkane516.workers.dev/webhook",
     [switch]$SkipWebhook = $false,
     [switch]$SkipScheduler = $false
 )
@@ -89,7 +90,7 @@ Write-Host "`n[5/6] Service deployed successfully at: $serviceUrl" -ForegroundCo
 # 6. Webhook and Scheduler setup
 if (-not $SkipWebhook -and -not [string]::IsNullOrWhiteSpace($BotToken)) {
     Write-Host "[6a/6] Configuring Telegram Webhook..." -NoNewline
-    $webhookEndpoint = "$serviceUrl/webhook"
+    $webhookEndpoint = if (-not [string]::IsNullOrWhiteSpace($WebhookUrl)) { $WebhookUrl } else { "$serviceUrl/webhook" }
     try {
         $setWebhookUrl = "https://api.telegram.org/bot$BotToken/setWebhook"
         $body = @{

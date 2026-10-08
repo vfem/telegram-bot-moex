@@ -145,7 +145,7 @@ if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
         # Unauthenticated request should be rejected (401) if SecretToken is set
         $unauthFailedAsExpected = $false
         try {
-            $null = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Body "{}" -ContentType "application/json" -TimeoutSec 10
+            $null = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Body "{}" -ContentType "application/json" -TimeoutSec 10 -UseBasicParsing
         } catch {
             if ($_.Exception.Response.StatusCode.value__ -eq 401 -or $_.Exception.Response.StatusCode.value__ -eq 400) {
                 $unauthFailedAsExpected = $true
@@ -154,7 +154,7 @@ if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
 
         if (-not [string]::IsNullOrWhiteSpace($SecretToken)) {
             $headers = @{ "X-Telegram-Bot-Api-Secret-Token" = $SecretToken }
-            $authResp = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Headers $headers -Body '{"update_id":0}' -ContentType "application/json" -TimeoutSec 10
+            $authResp = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Headers $headers -Body '{"update_id":0}' -ContentType "application/json" -TimeoutSec 10 -UseBasicParsing
             if ($authResp.StatusCode -eq 200 -and $unauthFailedAsExpected) {
                 Write-Host " [PASS] (Protected: rejects unauthorized, accepts secret)" -ForegroundColor Green
                 $passed++

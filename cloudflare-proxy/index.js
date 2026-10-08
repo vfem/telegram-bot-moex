@@ -109,6 +109,14 @@ async function getGoogleIdToken(env) {
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/healthz")) {
+      return new Response(JSON.stringify({ status: "healthy", service: "cf-edge-proxy" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }

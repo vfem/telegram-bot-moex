@@ -124,11 +124,11 @@ See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYM
      --set-env-vars TELEGRAM_BOT_TOKEN="your_token",TELEGRAM_SECRET_TOKEN="your_secret"
    ```
 
-2. Configure Telegram Webhook:
+2. Configure Telegram Webhook (pointing to your Cloudflare Edge Proxy or service):
    ```bash
    curl -s -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url":"https://<YOUR_CLOUD_RUN_URL>/webhook","secret_token":"your_secret","drop_pending_updates":true}'
+     -d '{"url":"https://<YOUR_EDGE_OR_SERVICE_URL>/webhook","secret_token":"your_secret","drop_pending_updates":true}'
    ```
 
 3. Setup Cloud Scheduler for Daily Digests (Free Tier: 1 of 3 free jobs):

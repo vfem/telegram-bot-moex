@@ -63,9 +63,10 @@ echo "[4/6] Service deployed successfully at: $SERVICE_URL"
 
 if [ -n "$BOT_TOKEN" ]; then
     echo -n "[5/6] Configuring Telegram Webhook... "
+    WEBHOOK_URL="${TELEGRAM_WEBHOOK_URL:-https://holy-art-8543.lkane516.workers.dev/webhook}"
     TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
         -H "Content-Type: application/json" \
-        -d "{\"url\":\"${SERVICE_URL}/webhook\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
+        -d "{\"url\":\"${WEBHOOK_URL}\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
     if echo "$TG_RESP" | grep -q '"ok":true'; then
         echo " [PASS]"
     else
