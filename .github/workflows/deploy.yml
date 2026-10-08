@@ -83,7 +83,7 @@ jobs:
             --project $PROJECT_ID \
             --region $REGION \
             --platform managed \
-            --allow-unauthenticated \
+            --no-allow-unauthenticated \
             --memory 128Mi \
             --cpu 1 \
             --min-instances 0 \
@@ -124,6 +124,7 @@ jobs:
         env:
           REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
           PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
+          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT || 'github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
           SCHEDULER_JOB: "moex-daily-digest"
         run: |
           echo "Configuring Cloud Scheduler job..."
@@ -133,7 +134,9 @@ jobs:
               --project "$PROJECT_ID" \
               --schedule="0 6 * * *" \
               --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
-              --http-method=POST
+              --http-method=POST \
+              --oidc-service-account-email="$SERVICE_ACCOUNT" \
+              --oidc-token-audience="${{ env.SERVICE_URL }}"
             echo "Scheduler job updated."
           else
             gcloud scheduler jobs create http "$SCHEDULER_JOB" \
@@ -141,7 +144,9 @@ jobs:
               --project "$PROJECT_ID" \
               --schedule="0 6 * * *" \
               --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
-              --http-method=POST
+              --http-method=POST \
+              --oidc-service-account-email="$SERVICE_ACCOUNT" \
+              --oidc-token-audience="${{ env.SERVICE_URL }}"
             echo "Scheduler job created."
           fi
 

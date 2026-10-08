@@ -17,9 +17,17 @@ flowchart TD
         User["📱 Investor / Chat"] <--> TG["Telegram Bot API<br/>(api.telegram.org)"]
     end
 
-    subgraph GCP ["Google Cloud Platform (Free Tier: $0.00/mo)"]
-        Cron["⏱ Cloud Scheduler<br/>(06:00 UTC / 09:00 MSK)"] -->|POST /cron/daily-digest| Run
-        TG -->|POST /webhook<br/>X-Telegram-Bot-Api-Secret-Token| Run["🚀 Cloud Run: moex-bonds-bot<br/>(min: 0, max: 2, 128MiB RAM, 1 vCPU)"]
+    subgraph Edge ["Cloudflare Global Edge (🛡 Zero-Cost Shield)"]
+        TG -->|POST /webhook<br/>X-Telegram-Bot-Api-Secret-Token| CF["Cloudflare Worker: holy-art-8543<br/>(Validates token & mints Google IAM OIDC token)"]
+        Spam["🤖 Scanners / Spammers"] -.->|Missing/Invalid Token| CF
+        CF -.->|❌ 401 Unauthorized at Edge| Drop["🗑 Dropped ($0.00)"]
+    end
+
+    subgraph GCP ["Google Cloud Platform (Private / Authenticated Only)"]
+        CF -->|POST /webhook<br/>Authorization: Bearer ID_TOKEN| Run["🚀 Cloud Run: moex-bonds-bot<br/>(--no-allow-unauthenticated, min: 0, max: 2, 128MiB)"]
+        Cron["⏱ Cloud Scheduler<br/>(06:00 UTC / 09:00 MSK)"] -->|POST /cron/daily-digest<br/>OIDC Service Account Auth| Run
+        DirectAtk["🤖 Direct Internet Scanner"] -.->|No IAM Bearer Token| Run
+        Run -.->|❌ 403 Forbidden at Google Frontend<br/>(Container never boots, $0.00)| GfeDrop["🗑 Dropped at GFE"]
     end
 
     subgraph External ["Free Public Financial APIs"]
@@ -169,13 +177,13 @@ gcloud services enable \
   cloudscheduler.googleapis.com
 ```
 
-### Step 2: Deploy Container to Cloud Run
+### Step 2: Deploy Container to Cloud Run (Authenticated Only)
 ```bash
 gcloud run deploy moex-bonds-bot \
   --source . \
   --region europe-west1 \
   --platform managed \
-  --allow-unauthenticated \
+  --no-allow-unauthenticated \
   --memory 128Mi \
   --cpu 1 \
   --min-instances 0 \
@@ -191,13 +199,13 @@ SERVICE_URL=$(gcloud run services describe moex-bonds-bot --region europe-west1 
 echo "Service deployed at: $SERVICE_URL"
 ```
 
-### Step 3: Register Protected Telegram Webhook
-Register the webhook with Telegram and bind the secret token:
+### Step 3: Register Protected Telegram Webhook via Cloudflare Edge
+Register the webhook with Telegram pointing to your Cloudflare Worker URL:
 ```bash
 curl -s -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{
-    \"url\": \"${SERVICE_URL}/webhook\",
+    \"url\": \"https://holy-art-8543.lkane516.workers.dev/webhook\",
     \"secret_token\": \"<YOUR_SECRET_TOKEN>\",
     \"drop_pending_updates\": true
   }"
@@ -207,16 +215,18 @@ Verify webhook status:
 ```bash
 curl -s "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 ```
-*Expected: `"has_custom_certificate": false, "pending_update_count": 0, "last_error_date": 0`.*
+*Expected: `"has_custom_certificate": false, "pending_update_count": 0, "ip_address": "104.21.10.196"` (Cloudflare edge IP).*
 
-### Step 4: Setup Cloud Scheduler for Morning Digest
-Create the recurring cron trigger (06:00 UTC = 09:00 MSK daily):
+### Step 4: Setup Cloud Scheduler with Google OIDC Authentication
+Create the recurring cron trigger with service account OIDC authentication (06:00 UTC = 09:00 MSK daily):
 ```bash
 gcloud scheduler jobs create http moex-daily-digest \
   --location europe-west1 \
   --schedule="0 6 * * *" \
   --uri="${SERVICE_URL}/cron/daily-digest" \
-  --http-method=POST
+  --http-method=POST \
+  --oidc-service-account-email="github-deployer@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --oidc-token-audience="${SERVICE_URL}"
 ```
 
 Test trigger the scheduler job immediately:

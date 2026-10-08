@@ -36,3 +36,5 @@ Thumbs.db
 credentials.json
 *key*.json
 sa-key.json
+cf-jwks.json
+.wrangler/

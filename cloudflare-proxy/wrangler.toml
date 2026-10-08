@@ -1,0 +1,10 @@
+name = "holy-art-8543"
+main = "index.js"
+compatibility_date = "2024-10-01"
+
+[vars]
+CLOUD_RUN_URL = "https://moex-bonds-bot-k3ncjju24a-ew.a.run.app"
+WIF_PROVIDER = "//iam.googleapis.com/projects/471922888147/locations/global/workloadIdentityPools/cloudflare-pool/providers/cf-worker-provider"
+WIF_AUDIENCE = "https://iam.googleapis.com/projects/471922888147/locations/global/workloadIdentityPools/cloudflare-pool/providers/cf-worker-provider"
+SERVICE_ACCOUNT_EMAIL = "cf-bot-invoker@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com"
+ISSUER_URI = "https://holy-art-8543.lkane516.workers.dev"

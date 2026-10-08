@@ -48,7 +48,7 @@ gcloud run deploy "$SERVICE_NAME" \
     --project "$PROJECT" \
     --region "$REGION" \
     --platform managed \
-    --allow-unauthenticated \
+    --no-allow-unauthenticated \
     --memory 128Mi \
     --cpu 1 \
     --min-instances 0 \
@@ -83,7 +83,9 @@ if gcloud scheduler jobs describe "$SCHEDULER_JOB" --location "$REGION" --projec
         --project "$PROJECT" \
         --schedule="0 6 * * *" \
         --uri="${SERVICE_URL}/cron/daily-digest" \
-        --http-method=POST >/dev/null 2>&1
+        --http-method=POST \
+        --oidc-service-account-email="github-deployer@${PROJECT}.iam.gserviceaccount.com" \
+        --oidc-token-audience="${SERVICE_URL}" >/dev/null 2>&1
     echo " [UPDATED]"
 else
     gcloud scheduler jobs create http "$SCHEDULER_JOB" \
@@ -91,7 +93,9 @@ else
         --project "$PROJECT" \
         --schedule="0 6 * * *" \
         --uri="${SERVICE_URL}/cron/daily-digest" \
-        --http-method=POST >/dev/null 2>&1
+        --http-method=POST \
+        --oidc-service-account-email="github-deployer@${PROJECT}.iam.gserviceaccount.com" \
+        --oidc-token-audience="${SERVICE_URL}" >/dev/null 2>&1
     echo " [CREATED]"
 fi
 

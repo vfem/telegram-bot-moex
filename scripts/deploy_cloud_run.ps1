@@ -69,7 +69,7 @@ gcloud run deploy $ServiceName `
     --project $Project `
     --region $Region `
     --platform managed `
-    --allow-unauthenticated `
+    --no-allow-unauthenticated `
     --memory 128Mi `
     --cpu 1 `
     --min-instances 0 `
@@ -121,7 +121,9 @@ if (-not $SkipScheduler) {
             --project $Project `
             --schedule="0 6 * * *" `
             --uri=$cronEndpoint `
-            --http-method=POST 2>&1 | Out-Null
+            --http-method=POST `
+            --oidc-service-account-email="github-deployer@$Project.iam.gserviceaccount.com" `
+            --oidc-token-audience=$serviceUrl 2>&1 | Out-Null
         Write-Host " [UPDATED]" -ForegroundColor Green
     } else {
         gcloud scheduler jobs create http $schedulerJobName `
@@ -129,7 +131,9 @@ if (-not $SkipScheduler) {
             --project $Project `
             --schedule="0 6 * * *" `
             --uri=$cronEndpoint `
-            --http-method=POST 2>&1 | Out-Null
+            --http-method=POST `
+            --oidc-service-account-email="github-deployer@$Project.iam.gserviceaccount.com" `
+            --oidc-token-audience=$serviceUrl 2>&1 | Out-Null
         Write-Host " [CREATED]" -ForegroundColor Green
     }
 }
