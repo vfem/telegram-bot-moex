@@ -13,6 +13,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	registerSubscriptionSteps(sc, tc)
 	registerProviderSteps(sc, tc)
 	registerMarketDataSteps(sc, tc)
+	registerSecuritySteps(sc, tc)
 }
 
 func TestFeatures(t *testing.T) {

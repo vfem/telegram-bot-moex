@@ -114,21 +114,22 @@ See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYM
      --source . \
      --region europe-west1 \
      --platform managed \
-     --allow-unauthenticated \
+     --no-allow-unauthenticated \
      --memory 128Mi \
      --cpu 1 \
      --min-instances 0 \
      --max-instances 2 \
      --concurrency 80 \
      --timeout 15s \
-     --set-env-vars TELEGRAM_BOT_TOKEN="your_token",TELEGRAM_SECRET_TOKEN="your_secret"
+     --service-account "bot-runtime@<PROJECT_ID>.iam.gserviceaccount.com" \
+     --set-secrets "TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest"
    ```
 
 2. Configure Telegram Webhook (pointing to your Cloudflare Edge Proxy or service):
    ```bash
    curl -s -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
-     -d '{"url":"https://<YOUR_EDGE_OR_SERVICE_URL>/webhook","secret_token":"your_secret","drop_pending_updates":true}'
+     -d '{"url":"https://<YOUR_EDGE_PROXY_URL>/webhook","secret_token":"your_secret","drop_pending_updates":true,"allowed_updates":["message"]}'
    ```
 
 3. Setup Cloud Scheduler for Daily Digests (Free Tier: 1 of 3 free jobs):
@@ -137,7 +138,9 @@ See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYM
      --location europe-west1 \
      --schedule="0 6 * * *" \
      --uri="https://<YOUR_CLOUD_RUN_URL>/cron/daily-digest" \
-     --http-method=POST
+     --http-method=POST \
+     --oidc-service-account-email="scheduler-invoker@<PROJECT_ID>.iam.gserviceaccount.com" \
+     --oidc-token-audience="https://<YOUR_CLOUD_RUN_URL>"
    ```
 
 ---

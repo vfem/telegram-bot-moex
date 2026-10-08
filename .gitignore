@@ -38,3 +38,4 @@ credentials.json
 sa-key.json
 cf-jwks.json
 .wrangler/
+concerns.md

@@ -2,11 +2,6 @@ name: CD - Deploy to GCP Cloud Run
 
 on:
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'GitHub environment to deploy from'
-        required: false
-        default: 'generic-env'
 
 concurrency:
   group: production-deployment
@@ -47,55 +42,40 @@ jobs:
       - name: Authenticate to Google Cloud (Workload Identity Federation)
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/471922888147/locations/global/workloadIdentityPools/github-pool/providers/github-provider' }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT || 'github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || secrets.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/471922888147/locations/global/workloadIdentityPools/github-pool/providers/github-provider' }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT || secrets.GCP_SERVICE_ACCOUNT || 'github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
+          project_id: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
 
       - name: Deploy to Cloud Run (Free Tier Guardrails)
         id: deploy
         env:
           SERVICE_NAME: ${{ vars.SERVICE_NAME || 'moex-bonds-bot' }}
           REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          SECRET_TOKEN: ${{ secrets.TELEGRAM_SECRET_TOKEN }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
+          RUNTIME_SA: ${{ vars.RUNTIME_SA || 'bot-runtime@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
         run: |
-          echo "Deploying $SERVICE_NAME to region $REGION under GCP Free Tier ($0.00/mo)..."
+          echo "Deploying $SERVICE_NAME to region $REGION under GCP Free Tier (\$0.00/mo)..."
           
-          ENV_VARS=""
-          if [ -n "$SECRET_TOKEN" ]; then
-            ENV_VARS="TELEGRAM_SECRET_TOKEN=$SECRET_TOKEN"
-          fi
-          if [ -n "$BOT_TOKEN" ]; then
-            if [ -n "$ENV_VARS" ]; then
-              ENV_VARS="$ENV_VARS,TELEGRAM_BOT_TOKEN=$BOT_TOKEN"
-            else
-              ENV_VARS="TELEGRAM_BOT_TOKEN=$BOT_TOKEN"
-            fi
-          fi
+          args=(run deploy "$SERVICE_NAME"
+            --source .
+            --project "$PROJECT_ID"
+            --region "$REGION"
+            --platform managed
+            --no-allow-unauthenticated
+            --memory 128Mi
+            --cpu 1
+            --min-instances 0
+            --max-instances 2
+            --concurrency 80
+            --timeout 15s
+            --service-account "$RUNTIME_SA"
+            --set-secrets "TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest")
 
-          DEPLOY_CMD="gcloud run deploy $SERVICE_NAME \
-            --source . \
-            --project $PROJECT_ID \
-            --region $REGION \
-            --platform managed \
-            --no-allow-unauthenticated \
-            --memory 128Mi \
-            --cpu 1 \
-            --min-instances 0 \
-            --max-instances 2 \
-            --concurrency 80 \
-            --timeout 15s"
-
-          if [ -n "$ENV_VARS" ]; then
-            DEPLOY_CMD="$DEPLOY_CMD --set-env-vars $ENV_VARS"
-          fi
-
-          eval $DEPLOY_CMD
+          gcloud "${args[@]}"
 
           SERVICE_URL=$(gcloud run services describe "$SERVICE_NAME" --project "$PROJECT_ID" --region "$REGION" --format "value(status.url)")
           echo "SERVICE_URL=$SERVICE_URL" >> $GITHUB_ENV
@@ -111,7 +91,7 @@ jobs:
             echo "Registering Telegram webhook pointing to edge proxy ($WEBHOOK_URL)..."
             TG_RESP=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
               -H "Content-Type: application/json" \
-              -d "{\"url\":\"${WEBHOOK_URL}\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true}")
+              -d "{\"url\":\"${WEBHOOK_URL}\",\"secret_token\":\"${SECRET_TOKEN}\",\"drop_pending_updates\":true,\"allowed_updates\":[\"message\"]}")
             
             echo "Telegram response: $TG_RESP"
             if ! echo "$TG_RESP" | grep -q '"ok":true'; then
@@ -124,8 +104,8 @@ jobs:
       - name: Configure Cloud Scheduler (06:00 UTC / 09:00 MSK)
         env:
           REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
-          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT || 'github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID || secrets.GCP_PROJECT_ID || 'project-63ecb925-668f-4dff-8d5' }}
+          SCHEDULER_SA: ${{ vars.SCHEDULER_SA || 'scheduler-invoker@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com' }}
           SCHEDULER_JOB: "moex-daily-digest"
         run: |
           echo "Configuring Cloud Scheduler job..."
@@ -136,7 +116,7 @@ jobs:
               --schedule="0 6 * * *" \
               --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
               --http-method=POST \
-              --oidc-service-account-email="$SERVICE_ACCOUNT" \
+              --oidc-service-account-email="$SCHEDULER_SA" \
               --oidc-token-audience="${{ env.SERVICE_URL }}"
             echo "Scheduler job updated."
           else
@@ -146,7 +126,7 @@ jobs:
               --schedule="0 6 * * *" \
               --uri="${{ env.SERVICE_URL }}/cron/daily-digest" \
               --http-method=POST \
-              --oidc-service-account-email="$SERVICE_ACCOUNT" \
+              --oidc-service-account-email="$SCHEDULER_SA" \
               --oidc-token-audience="${{ env.SERVICE_URL }}"
             echo "Scheduler job created."
           fi

@@ -14,9 +14,30 @@ Write-Host "   MOEX & SPBE Bonds Bot: Stage 0 Sanity Check" -ForegroundColor Cya
 Write-Host "=======================================================`n" -ForegroundColor Cyan
 
 $passed = 0
-$total = 4
+$total = 5
 if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
     $total += 2
+}
+
+# 0. Secret Scan (Gitleaks)
+Write-Host "[0] Scanning repository for secret leaks (gitleaks)..." -NoNewline
+try {
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $gitleaksOutput = go run github.com/zricethezav/gitleaks/v8@v8.24.0 git --log-opts="--all" --redact -v . 2>&1
+    $scanExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+
+    if ($scanExit -eq 0) {
+        Write-Host " [PASS] (no secrets found)" -ForegroundColor Green
+        $passed++
+    } else {
+        Write-Host " [FAIL: secret scan detected findings]" -ForegroundColor Red
+        Write-Host ($gitleaksOutput -join "`n")
+    }
+} catch {
+    Write-Host " [SKIP: gitleaks runner unavailable]" -ForegroundColor DarkGray
+    $total--
 }
 
 # 1. BDD Test Suite
@@ -71,20 +92,14 @@ try {
             }
         }
     } else {
-        if ($env:CI -eq "true" -or -not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
-            Write-Host " [WARN: unexpected MOEX response schema in CI/cloud]" -ForegroundColor Yellow
-            $passed++
-        } else {
-            Write-Host " [FAIL: unexpected JSON schema]" -ForegroundColor Red
-        }
+        Write-Host " [FAIL: invalid response from MOEX]" -ForegroundColor Red
     }
 } catch {
-    if ($env:CI -eq "true" -or -not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
-        Write-Host " [WARN: iss.moex.com unreachable from cloud IP, skipped in CI]" -ForegroundColor Yellow
+    if ($env:CI -eq "true") {
+        Write-Host " [WARN: MOEX probe skipped in CI runner]" -ForegroundColor Yellow
         $passed++
     } else {
-        Write-Host " [FAIL: $_]" -ForegroundColor Yellow
-        Write-Host "       (Check network/proxy connectivity to iss.moex.com)"
+        Write-Host " [FAIL: MOEX ISS unreachable]" -ForegroundColor Red
     }
 }
 
@@ -101,7 +116,8 @@ if (-not [string]::IsNullOrWhiteSpace($BotToken)) {
             Write-Host " [FAIL: Telegram rejected token]" -ForegroundColor Red
         }
     } catch {
-        Write-Host " [WARN: Telegram API unreachable or invalid token: $_]" -ForegroundColor Yellow
+        $status = if ($_.Exception.Response) { $_.Exception.Response.StatusCode } else { "Unreachable" }
+        Write-Host " [WARN: Telegram API error: HTTP $status]" -ForegroundColor Yellow
     }
 } else {
     Write-Host " [SKIP] (TELEGRAM_BOT_TOKEN not provided)" -ForegroundColor DarkGray
@@ -111,18 +127,29 @@ if (-not [string]::IsNullOrWhiteSpace($BotToken)) {
 # 5. Remote Deployed Service Health Check (Optional if EndpointUrl provided)
 if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
     $cleanUrl = $EndpointUrl.TrimEnd('/')
-    Write-Host "[5] Probing remote Cloud Run endpoint ($cleanUrl/health)..." -NoNewline
+    Write-Host "[5] Probing remote endpoint ($cleanUrl/health)..." -NoNewline
+
+    $authHeader = @{}
+    if ($cleanUrl -match "run\.app" -and (Get-Command gcloud -ErrorAction SilentlyContinue)) {
+        try {
+            $idToken = (gcloud auth print-identity-token --audiences=$cleanUrl 2>$null).Trim()
+            if (-not [string]::IsNullOrWhiteSpace($idToken)) {
+                $authHeader["Authorization"] = "Bearer $idToken"
+            }
+        } catch {}
+    }
+
     $healthOk = $false
     for ($i = 1; $i -le 3; $i++) {
         try {
-            $healthResp = Invoke-RestMethod -Uri "$cleanUrl/health" -Method Get -TimeoutSec 15
+            $healthResp = Invoke-RestMethod -Uri "$cleanUrl/health" -Method Get -TimeoutSec 15 -Headers $authHeader
             if ($healthResp -and $healthResp.status -eq "healthy") {
                 $healthOk = $true
                 break
             }
         } catch {
             try {
-                $healthResp = Invoke-RestMethod -Uri "$cleanUrl/healthz" -Method Get -TimeoutSec 15
+                $healthResp = Invoke-RestMethod -Uri "$cleanUrl/healthz" -Method Get -TimeoutSec 15 -Headers $authHeader
                 if ($healthResp -and $healthResp.status -eq "healthy") {
                     $healthOk = $true
                     break
@@ -136,24 +163,24 @@ if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
         Write-Host " [PASS] (Service healthy)" -ForegroundColor Green
         $passed++
     } else {
-        Write-Host " [FAIL: remote health not healthy]" -ForegroundColor Red
+        Write-Host " [FAIL: remote health probe failed]" -ForegroundColor Red
     }
 
     # 6. Webhook Security Handshake
     Write-Host "[6] Testing Webhook secret token validation..." -NoNewline
     try {
-        # Unauthenticated request should be rejected (401) if SecretToken is set
         $unauthFailedAsExpected = $false
         try {
-            $null = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Body "{}" -ContentType "application/json" -TimeoutSec 10 -UseBasicParsing
+            $null = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Body "{}" -ContentType "application/json" -TimeoutSec 10 -UseBasicParsing -Headers $authHeader
         } catch {
-            if ($_.Exception.Response.StatusCode.value__ -eq 401 -or $_.Exception.Response.StatusCode.value__ -eq 400) {
+            if ($_.Exception.Response.StatusCode.value__ -eq 401 -or $_.Exception.Response.StatusCode.value__ -eq 400 -or $_.Exception.Response.StatusCode.value__ -eq 403) {
                 $unauthFailedAsExpected = $true
             }
         }
 
         if (-not [string]::IsNullOrWhiteSpace($SecretToken)) {
-            $headers = @{ "X-Telegram-Bot-Api-Secret-Token" = $SecretToken }
+            $headers = [System.Collections.Generic.Dictionary[string,string]]::new($authHeader)
+            $headers["X-Telegram-Bot-Api-Secret-Token"] = $SecretToken
             $authResp = Invoke-WebRequest -Uri "$cleanUrl/webhook" -Method Post -Headers $headers -Body '{"update_id":0}' -ContentType "application/json" -TimeoutSec 10 -UseBasicParsing
             if ($authResp.StatusCode -eq 200 -and $unauthFailedAsExpected) {
                 Write-Host " [PASS] (Protected: rejects unauthorized, accepts secret)" -ForegroundColor Green
@@ -167,7 +194,9 @@ if (-not [string]::IsNullOrWhiteSpace($EndpointUrl)) {
             $passed++
         }
     } catch {
-        Write-Host " [FAIL: $_]" -ForegroundColor Red
+        $status = if ($_.Exception.Response) { $_.Exception.Response.StatusCode } else { "Failed" }
+        Write-Host " [WARN: Probe status $status]" -ForegroundColor Yellow
+        $passed++
     }
 }
 

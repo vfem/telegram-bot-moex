@@ -10,6 +10,7 @@ import (
 	"telegram-bot-moex/internal/provider/spbe"
 	"telegram-bot-moex/internal/service"
 	"telegram-bot-moex/internal/store/memory"
+	"telegram-bot-moex/internal/telegram"
 )
 
 // TestContext holds scenario execution state.
@@ -39,6 +40,9 @@ type TestContext struct {
 	mockBondProv      *mockBondProvider
 	lastAnnouncement  domain.Announcement
 	returnedPayments  []domain.Payment
+	bot               *telegram.Bot
+	lastResponseCode  int
+	lastResponseBody  string
 }
 
 func newTestContext() *TestContext {

@@ -8,6 +8,8 @@ param(
     [string]$BotToken = $env:TELEGRAM_BOT_TOKEN,
     [string]$SecretToken = $env:TELEGRAM_SECRET_TOKEN,
     [string]$WebhookUrl = "https://holy-art-8543.lkane516.workers.dev/webhook",
+    [string]$RuntimeSA = "",
+    [string]$SchedulerSA = "",
     [switch]$SkipWebhook = $false,
     [switch]$SkipScheduler = $false
 )
@@ -36,6 +38,13 @@ if ([string]::IsNullOrWhiteSpace($Project)) {
 }
 Write-Host "[2/6] Active GCP Project: $Project in region $Region" -ForegroundColor Yellow
 
+if ([string]::IsNullOrWhiteSpace($RuntimeSA)) {
+    $RuntimeSA = "bot-runtime@$Project.iam.gserviceaccount.com"
+}
+if ([string]::IsNullOrWhiteSpace($SchedulerSA)) {
+    $SchedulerSA = "scheduler-invoker@$Project.iam.gserviceaccount.com"
+}
+
 # Secret token generation if missing
 if ([string]::IsNullOrWhiteSpace($SecretToken)) {
     $rngBytes = New-Object byte[] 16
@@ -50,42 +59,67 @@ if ([string]::IsNullOrWhiteSpace($BotToken)) {
 
 # 3. Enable required GCP APIs (idempotent)
 Write-Host "[3/6] Ensuring required GCP APIs are enabled..." -NoNewline
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com --project $Project 2>&1 | Out-Null
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com cloudscheduler.googleapis.com secretmanager.googleapis.com --project $Project 2>&1 | Out-Null
 Write-Host " [OK]" -ForegroundColor Green
 
-# 4. Deploy to Cloud Run with Free Tier Guardrails
-Write-Host "[4/6] Deploying container to Cloud Run with Free Tier parameters..." -ForegroundColor Cyan
-Write-Host "      - Memory: 128Mi (minimum billing tier)" -ForegroundColor DarkGray
-Write-Host "      - CPU: 1 vCPU with request-based throttling" -ForegroundColor DarkGray
-Write-Host "      - Instances: min 0 (scale-to-zero), max 2" -ForegroundColor DarkGray
-Write-Host "      - Concurrency: 80, Timeout: 15s" -ForegroundColor DarkGray
-
-$envVars = "TELEGRAM_SECRET_TOKEN=$SecretToken"
+# 4. Sync Secrets to Secret Manager
+Write-Host "[4/6] Checking Secret Manager secrets..." -ForegroundColor Cyan
 if (-not [string]::IsNullOrWhiteSpace($BotToken)) {
-    $envVars += ",TELEGRAM_BOT_TOKEN=$BotToken"
+    $existingBotSecret = gcloud secrets describe telegram-bot-token --project $Project 2>$null
+    if (-not $existingBotSecret) {
+        $BotToken | gcloud secrets create telegram-bot-token --data-file=- --replication-policy=automatic --project $Project 2>&1 | Out-Null
+    } else {
+        $BotToken | gcloud secrets versions add telegram-bot-token --data-file=- --project $Project 2>&1 | Out-Null
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($SecretToken)) {
+    $existingSecretToken = gcloud secrets describe telegram-secret-token --project $Project 2>$null
+    if (-not $existingSecretToken) {
+        $SecretToken | gcloud secrets create telegram-secret-token --data-file=- --replication-policy=automatic --project $Project 2>&1 | Out-Null
+    } else {
+        $SecretToken | gcloud secrets versions add telegram-secret-token --data-file=- --project $Project 2>&1 | Out-Null
+    }
 }
 
-gcloud run deploy $ServiceName `
-    --source . `
-    --project $Project `
-    --region $Region `
-    --platform managed `
-    --no-allow-unauthenticated `
-    --memory 128Mi `
-    --cpu 1 `
-    --min-instances 0 `
-    --max-instances 2 `
-    --concurrency 80 `
-    --timeout 15s `
-    --set-env-vars $envVars
+# 5. Deploy to Cloud Run with Free Tier Guardrails
+Write-Host "[5/6] Deploying container to Cloud Run with Free Tier parameters..." -ForegroundColor Cyan
+$deployArgs = @(
+    "run", "deploy", $ServiceName,
+    "--source", ".",
+    "--project", $Project,
+    "--region", $Region,
+    "--platform", "managed",
+    "--no-allow-unauthenticated",
+    "--memory", "128Mi",
+    "--cpu", "1",
+    "--min-instances", "0",
+    "--max-instances", "2",
+    "--concurrency", "80",
+    "--timeout", "15s"
+)
+
+# Attach dedicated runtime SA if it exists
+$runtimeExists = gcloud iam service-accounts describe $RuntimeSA --project $Project 2>$null
+if ($runtimeExists) {
+    $deployArgs += @("--service-account", $RuntimeSA)
+}
+
+# Attach secrets from Secret Manager if configured
+$hasBotSec = gcloud secrets describe telegram-bot-token --project $Project 2>$null
+$hasSecTok = gcloud secrets describe telegram-secret-token --project $Project 2>$null
+if ($hasBotSec -and $hasSecTok) {
+    $deployArgs += @("--set-secrets", "TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest")
+}
+
+& gcloud @deployArgs
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Cloud Run deployment failed."
 }
 
-# 5. Extract Service URL
+# Extract Service URL
 $serviceUrl = (gcloud run services describe $ServiceName --project $Project --region $Region --format "value(status.url)").Trim()
-Write-Host "`n[5/6] Service deployed successfully at: $serviceUrl" -ForegroundColor Green
+Write-Host "`nService deployed successfully at: $serviceUrl" -ForegroundColor Green
 
 # 6. Webhook and Scheduler setup
 if (-not $SkipWebhook -and -not [string]::IsNullOrWhiteSpace($BotToken)) {
@@ -97,6 +131,7 @@ if (-not $SkipWebhook -and -not [string]::IsNullOrWhiteSpace($BotToken)) {
             url = $webhookEndpoint
             secret_token = $SecretToken
             drop_pending_updates = $true
+            allowed_updates = @("message")
         }
         $tgResp = Invoke-RestMethod -Uri $setWebhookUrl -Method Post -Body ($body | ConvertTo-Json) -ContentType "application/json"
         if ($tgResp.ok) {
@@ -105,7 +140,8 @@ if (-not $SkipWebhook -and -not [string]::IsNullOrWhiteSpace($BotToken)) {
             Write-Host " [FAIL: $($tgResp.description)]" -ForegroundColor Red
         }
     } catch {
-        Write-Host " [FAIL: $_]" -ForegroundColor Red
+        $statusCode = if ($_.Exception.Response) { $_.Exception.Response.StatusCode } else { "Unreachable" }
+        Write-Host " [FAIL: HTTP $statusCode]" -ForegroundColor Red
     }
 }
 
@@ -114,7 +150,12 @@ if (-not $SkipScheduler) {
     $cronEndpoint = "$serviceUrl/cron/daily-digest"
     $schedulerJobName = "moex-daily-digest"
     
-    # Try updating or creating
+    $targetSchedSA = $SchedulerSA
+    $schedExists = gcloud iam service-accounts describe $targetSchedSA --project $Project 2>$null
+    if (-not $schedExists) {
+        $targetSchedSA = "github-deployer@$Project.iam.gserviceaccount.com"
+    }
+
     $existingJob = gcloud scheduler jobs describe $schedulerJobName --location $Region --project $Project 2>$null
     if ($existingJob) {
         gcloud scheduler jobs update http $schedulerJobName `
@@ -123,7 +164,7 @@ if (-not $SkipScheduler) {
             --schedule="0 6 * * *" `
             --uri=$cronEndpoint `
             --http-method=POST `
-            --oidc-service-account-email="github-deployer@$Project.iam.gserviceaccount.com" `
+            --oidc-service-account-email=$targetSchedSA `
             --oidc-token-audience=$serviceUrl 2>&1 | Out-Null
         Write-Host " [UPDATED]" -ForegroundColor Green
     } else {
@@ -133,7 +174,7 @@ if (-not $SkipScheduler) {
             --schedule="0 6 * * *" `
             --uri=$cronEndpoint `
             --http-method=POST `
-            --oidc-service-account-email="github-deployer@$Project.iam.gserviceaccount.com" `
+            --oidc-service-account-email=$targetSchedSA `
             --oidc-token-audience=$serviceUrl 2>&1 | Out-Null
         Write-Host " [CREATED]" -ForegroundColor Green
     }

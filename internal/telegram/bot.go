@@ -3,6 +3,7 @@ package telegram
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -118,10 +119,16 @@ func (b *Bot) WebhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate secret token if configured
+	// Fail closed if bot token is configured (production mode) but secret token is unset
+	if b.secretToken == "" && b.token != "" {
+		http.Error(w, "Webhook secret not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Validate secret token if configured (constant-time)
 	if b.secretToken != "" {
 		tokenHeader := r.Header.Get("X-Telegram-Bot-Api-Secret-Token")
-		if tokenHeader != b.secretToken {
+		if subtle.ConstantTimeCompare([]byte(tokenHeader), []byte(b.secretToken)) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -332,9 +339,15 @@ func (b *Bot) sendHelp(ctx context.Context, chatID int64) {
 
 // CronDailyDigestHandler is triggered by Cloud Scheduler.
 func (b *Bot) CronDailyDigestHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	msgs, err := b.notifier.RunDailyDigest(r.Context(), time.Now())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("Cron daily digest execution error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)

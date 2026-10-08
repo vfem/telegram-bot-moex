@@ -75,12 +75,12 @@
     --source . \
     --region europe-west1 \
     --platform managed \
-    --allow-unauthenticated \
+    --no-allow-unauthenticated \
     --memory 128Mi \
     --cpu 1 \
     --min-instances 0 \
     --max-instances 2 \
-    --set-env-vars TELEGRAM_BOT_TOKEN="<BOT_TOKEN>",TELEGRAM_SECRET_TOKEN="<SECRET_TOKEN>"
+    --set-secrets "TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest"
   ```
 - **Проверка здоровья (Health check):**
   ```bash
@@ -97,12 +97,15 @@
   ```bash
   curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
     -d "url=https://<SERVICE_URL>/webhook" \
-    -d "secret_token=<SECRET_TOKEN>"
+    -d "secret_token=<SECRET_TOKEN>" \
+    -d "allowed_updates=[\"message\"]"
   ```
 - **Тест безопасности (Security check):**
-  - Запрос к `/webhook` **без** заголовка `X-Telegram-Bot-Api-Secret-Token` должен вернуть `401 Unauthorized`.
+  - Запрос к `/webhook` **без** заголовка `X-Telegram-Bot-Api-Secret-Token` должен вернуть `401 Unauthorized` (проверка в постоянном времени `crypto/subtle`).
   - Запрос к `/webhook` **с неверным** заголовком должен вернуть `401 Unauthorized`.
+  - Запрос к `/webhook` при заданном `TELEGRAM_BOT_TOKEN`, но отсутствующем `TELEGRAM_SECRET_TOKEN` возвращает `503 Service Unavailable` (fail-closed guardrail).
   - Запрос к `/webhook` **с корректным** секретным токеном должен вернуть `200 OK`.
+  - Запрос методом, отличным от `POST` (например, `GET`), возвращает `405 Method Not Allowed`.
 - **Критерий приемки (DoD):** Telegram подтверждает статус вебхука (`getWebhookInfo`), неавторизованные запросы блокируются.
 
 ---
@@ -128,12 +131,15 @@
   gcloud scheduler jobs create http moex-daily-digest \
     --schedule="0 6 * * *" \
     --uri="https://<SERVICE_URL>/cron/daily-digest" \
-    --http-method=POST
+    --http-method=POST \
+    --oidc-service-account-email="scheduler-invoker@<PROJECT_ID>.iam.gserviceaccount.com" \
+    --oidc-token-audience="https://<SERVICE_URL>"
   ```
 - **Тестовый триггер:**
   ```bash
   gcloud scheduler jobs run moex-daily-digest
   ```
+- **Безопасность:** Эндпоинт `/cron/daily-digest` принимает строго метод `POST` (при `GET` возвращает `405 Method Not Allowed`). Ошибки логируются на стороне сервера, клиент получает санированный статус `500 Internal server error` без раскрытия стека или деталей БД.
 - **Критерий приемки (DoD):** Cloud Scheduler успешно отрабатывает без ошибок (код завершения 200 в логах Cloud Run).
 
 ---

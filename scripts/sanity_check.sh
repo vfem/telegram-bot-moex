@@ -15,9 +15,18 @@ echo "======================================================="
 echo ""
 
 PASSED=0
-TOTAL=4
+TOTAL=5
 if [ -n "$ENDPOINT_URL" ]; then
     TOTAL=$((TOTAL + 2))
+fi
+
+# 0. Secret Scan (Gitleaks)
+echo -n "[0] Scanning repository for secret leaks (gitleaks)... "
+if go run github.com/zricethezav/gitleaks/v8@v8.24.0 git --log-opts="--all" --redact -v . >/dev/null 2>&1; then
+    echo " [PASS] (no secrets found)"
+    PASSED=$((PASSED + 1))
+else
+    echo " [FAIL: secret findings detected or gitleaks runner failed]"
 fi
 
 # 1. BDD Test Suite
@@ -71,9 +80,18 @@ fi
 if [ -n "$ENDPOINT_URL" ]; then
     CLEAN_URL="${ENDPOINT_URL%/}"
     echo -n "[5] Probing remote Cloud Run endpoint ($CLEAN_URL/health)... "
+    
+    AUTH_HEADER=()
+    if [[ "$CLEAN_URL" =~ run\.app ]] && command -v gcloud >/dev/null 2>&1; then
+        ID_TOKEN=$(gcloud auth print-identity-token --audiences="$CLEAN_URL" 2>/dev/null || true)
+        if [ -n "$ID_TOKEN" ]; then
+            AUTH_HEADER=(-H "Authorization: Bearer $ID_TOKEN")
+        fi
+    fi
+
     HEALTH_RESP=""
     for i in 1 2 3; do
-        HEALTH_RESP=$(curl -s -f -m 15 "$CLEAN_URL/health" 2>/dev/null || curl -s -f -m 15 "$CLEAN_URL/healthz" 2>/dev/null || true)
+        HEALTH_RESP=$(curl -s -f -m 15 "${AUTH_HEADER[@]}" "$CLEAN_URL/health" 2>/dev/null || curl -s -f -m 15 "${AUTH_HEADER[@]}" "$CLEAN_URL/healthz" 2>/dev/null || true)
         if echo "$HEALTH_RESP" | grep -q '"status":"healthy"'; then
             break
         fi
@@ -83,14 +101,14 @@ if [ -n "$ENDPOINT_URL" ]; then
         echo " [PASS] (Service healthy)"
         PASSED=$((PASSED + 1))
     else
-        echo " [FAIL: remote health not healthy (got: $HEALTH_RESP)]"
+        echo " [FAIL: remote health probe failed]"
     fi
 
     echo -n "[6] Testing Webhook secret token validation... "
-    UNAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$CLEAN_URL/webhook" -d '{}' -H "Content-Type: application/json" || true)
+    UNAUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${AUTH_HEADER[@]}" "$CLEAN_URL/webhook" -d '{}' -H "Content-Type: application/json" || true)
     if [ -n "$SECRET_TOKEN" ]; then
-        AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$CLEAN_URL/webhook" -d '{"update_id":0}' -H "Content-Type: application/json" -H "X-Telegram-Bot-Api-Secret-Token: $SECRET_TOKEN" || true)
-        if [ "$AUTH_CODE" = "200" ] && [ "$UNAUTH_CODE" = "401" ]; then
+        AUTH_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${AUTH_HEADER[@]}" "$CLEAN_URL/webhook" -d '{"update_id":0}' -H "Content-Type: application/json" -H "X-Telegram-Bot-Api-Secret-Token: $SECRET_TOKEN" || true)
+        if [ "$AUTH_CODE" = "200" ] && [[ "$UNAUTH_CODE" =~ ^(401|400|403)$ ]]; then
             echo " [PASS] (Protected: rejects unauthorized, accepts secret)"
             PASSED=$((PASSED + 1))
         else

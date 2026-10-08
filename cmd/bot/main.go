@@ -22,6 +22,11 @@ func main() {
 	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	secretToken := os.Getenv("TELEGRAM_SECRET_TOKEN")
 
+	// Fail closed: if bot token is set (production mode), secret token must be configured
+	if botToken != "" && secretToken == "" {
+		log.Fatal("Fatal configuration error: TELEGRAM_SECRET_TOKEN must be configured when TELEGRAM_BOT_TOKEN is set")
+	}
+
 	log.Printf("Starting MOEX & SPBE Bonds Telegram Bot on port %s...", port)
 
 	// In-memory store (or Firestore on GCP) and market cache

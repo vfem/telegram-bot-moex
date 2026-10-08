@@ -1,0 +1,8 @@
+.gcloudignore
+.git
+.github
+#!include:.gitignore
+#!include:.dockerignore
+cloudflare-proxy/
+docs/
+concerns.md

@@ -107,6 +107,15 @@ async function getGoogleIdToken(env) {
   return cachedIdToken;
 }
 
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.byteLength !== bb.byteLength) return false;
+  return crypto.subtle.timingSafeEqual(ab, bb);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -121,9 +130,14 @@ export default {
       return new Response("Method not allowed", { status: 405 });
     }
 
-    // 1. Verify Telegram secret token at Cloudflare edge
+    // Only allow webhook forwarding
+    if (url.pathname !== "/webhook") {
+      return new Response("Not found", { status: 404 });
+    }
+
+    // 1. Verify Telegram secret token at Cloudflare edge with constant-time compare
     const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
-    if (!secret || secret !== env.TELEGRAM_SECRET_TOKEN) {
+    if (!safeEqual(secret, env.TELEGRAM_SECRET_TOKEN)) {
       return new Response("Unauthorized", { status: 401 });
     }
 
@@ -131,9 +145,8 @@ export default {
       // 2. Fetch or retrieve cached Google IAM ID Token
       const idToken = await getGoogleIdToken(env);
 
-      // 3. Forward to private Cloud Run with IAM Bearer token
-      const url = new URL(request.url);
-      const targetUrl = env.CLOUD_RUN_URL + url.pathname;
+      // 3. Forward strictly to /webhook on private Cloud Run with IAM Bearer token
+      const targetUrl = env.CLOUD_RUN_URL.replace(/\/+$/, "") + "/webhook";
 
       const newHeaders = new Headers(request.headers);
       newHeaders.set("Authorization", "Bearer " + idToken);
@@ -141,12 +154,13 @@ export default {
       const bodyText = await request.text();
 
       return await fetch(targetUrl, {
-        method: request.method,
+        method: "POST",
         headers: newHeaders,
         body: bodyText,
       });
     } catch (err) {
-      return new Response("Edge Auth Error: " + err.message, { status: 502 });
+      console.error("edge-auth-failure:", err && err.message);
+      return new Response("Bad Gateway", { status: 502 });
     }
   },
 };

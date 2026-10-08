@@ -136,8 +136,8 @@ chmod +x scripts/deploy_cloud_run.sh scripts/sanity_check.sh
 ## 5. GitHub Actions CI/CD Automation
 
 The repository includes pre-configured GitHub Actions workflows in `.github/workflows/`:
-1. **`ci.yml` (CI - Tests & Sanity):** Automatically runs Go verification, BDD scenarios (`tests/bdd`), and compilation on all PRs and pushes to `master`.
-2. **`deploy.yml` (CD - Deploy to Cloud Run):** Triggered automatically on push to `master` (excluding doc edits) and via manual `workflow_dispatch`. Runs tests, authenticates to GCP, deploys to Cloud Run with Free Tier guardrails, sets the Telegram webhook, configures Cloud Scheduler, and runs smoke tests.
+1. **`ci.yml` (CI - Tests & Sanity):** Automatically runs Gitleaks secret scan, Go verification, BDD scenarios (`tests/bdd`), and compilation on all PRs and pushes to `master`.
+2. **`deploy.yml` (CD - Deploy to Cloud Run):** Manual trigger via `workflow_dispatch` on `master` within the protected `generic-env` environment. Runs tests, authenticates to GCP via WIF, deploys to Cloud Run with Free Tier guardrails and Secret Manager secrets, sets the Telegram webhook, and configures Cloud Scheduler.
 
 ### Keyless Authentication via Workload Identity Federation (WIF)
 
@@ -145,21 +145,20 @@ The repository includes pre-configured GitHub Actions workflows in `.github/work
 > Google Cloud enforces the security policy `constraints/iam.disableServiceAccountKeyCreation`, which prevents downloading vulnerable static JSON private keys.
 > Instead, our GitHub Actions pipeline uses **Workload Identity Federation (WIF)**: keyless authentication via OpenID Connect (OIDC).
 
-The following resources have already been provisioned and configured in GCP:
+The following resources are provisioned in GCP:
 - **Workload Identity Pool:** `projects/471922888147/locations/global/workloadIdentityPools/github-pool`
-- **OIDC Provider:** `projects/471922888147/locations/global/workloadIdentityPools/github-pool/providers/github-provider` (scoped strictly to repository `vfem/telegram-bot-moex`)
-- **Service Account:** `github-deployer@project-63ecb925-668f-4dff-8d5.iam.gserviceaccount.com`
-- **IAM Roles Assigned:** `run.admin`, `cloudbuild.builds.editor`, `artifactregistry.admin`, `cloudscheduler.admin`, `iam.serviceAccountUser`, and `iam.workloadIdentityUser`.
+- **OIDC Provider:** `projects/471922888147/locations/global/workloadIdentityPools/github-pool/providers/github-provider` (scoped to `vfem/telegram-bot-moex`, owner ID `36859396`, and environment `generic-env`)
+- **Deployer Service Account:** `github-deployer@<PROJECT_ID>.iam.gserviceaccount.com`
+- **Dedicated Runtime SA:** `bot-runtime@<PROJECT_ID>.iam.gserviceaccount.com` (minimal `roles/logging.logWriter` + Secret Manager access)
+- **Dedicated Scheduler SA:** `scheduler-invoker@<PROJECT_ID>.iam.gserviceaccount.com` (`roles/run.invoker` on `moex-bonds-bot`)
 
-### Required GitHub Repository Secrets
+### Secrets Management in Google Secret Manager
 
-Because GCP authentication is fully automated via WIF, you only need to configure your Telegram secrets in GitHub (**Settings** ➔ **Secrets and variables** ➔ **Actions** ➔ **New repository secret**):
+Sensitive tokens are stored encrypted in Google Secret Manager (`secretmanager.googleapis.com`), never exposed as plaintext revision environment variables:
+- `telegram-bot-token`
+- `telegram-secret-token`
 
-| Secret Name | Required? | Description |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | **Yes** | Production token obtained from [@BotFather](https://t.me/BotFather) |
-| `TELEGRAM_SECRET_TOKEN` | Optional | Webhook verification string (e.g. 32-character random string) |
-| `GCP_PROJECT_ID` | Optional | Set if overriding `project-63ecb925-668f-4dff-8d5` |
+Cloud Run mounts these directly into container environment variables at cold start via `--set-secrets`.
 
 
 ---
@@ -190,7 +189,8 @@ gcloud run deploy moex-bonds-bot \
   --max-instances 2 \
   --concurrency 80 \
   --timeout 15s \
-  --set-env-vars TELEGRAM_BOT_TOKEN="<YOUR_BOT_TOKEN>",TELEGRAM_SECRET_TOKEN="<YOUR_SECRET_TOKEN>"
+  --service-account "bot-runtime@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --set-secrets "TELEGRAM_BOT_TOKEN=telegram-bot-token:latest,TELEGRAM_SECRET_TOKEN=telegram-secret-token:latest"
 ```
 
 Retrieve the deployed URL:
@@ -205,9 +205,10 @@ Register the webhook with Telegram pointing to your Cloudflare Worker URL:
 curl -s -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook" \
   -H "Content-Type: application/json" \
   -d "{
-    \"url\": \"https://holy-art-8543.lkane516.workers.dev/webhook\",
+    \"url\": \"https://<YOUR_WORKER_SUBDOMAIN>.workers.dev/webhook\",
     \"secret_token\": \"<YOUR_SECRET_TOKEN>\",
-    \"drop_pending_updates\": true
+    \"drop_pending_updates\": true,
+    \"allowed_updates\": [\"message\"]
   }"
 ```
 
@@ -225,7 +226,7 @@ gcloud scheduler jobs create http moex-daily-digest \
   --schedule="0 6 * * *" \
   --uri="${SERVICE_URL}/cron/daily-digest" \
   --http-method=POST \
-  --oidc-service-account-email="github-deployer@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --oidc-service-account-email="scheduler-invoker@<PROJECT_ID>.iam.gserviceaccount.com" \
   --oidc-token-audience="${SERVICE_URL}"
 ```
 
