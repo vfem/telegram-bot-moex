@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -44,28 +45,50 @@ type Chat struct {
 
 // Bot handles incoming webhooks and dispatches Telegram messages.
 type Bot struct {
-	token       string
-	secretToken string
-	bondService *service.BondService
-	subService  *service.SubscriptionService
-	notifier    *service.NotifierService
-	httpClient  *http.Client
+	token         string
+	secretToken   string
+	bondService   *service.BondService
+	finService    *service.FinancialsService
+	subService    *service.SubscriptionService
+	notifier      *service.NotifierService
+	httpClient    *http.Client
+	messageSender func(ctx context.Context, chatID int64, text string) error
 }
 
-// NewBot instantiates a Bot.
-func NewBot(token, secretToken string, bondSvc *service.BondService, subSvc *service.SubscriptionService, notifier *service.NotifierService) *Bot {
+// NewBot instantiates a Bot with all required services.
+func NewBot(token, secretToken string, bondSvc *service.BondService, subSvc *service.SubscriptionService, notifier *service.NotifierService, finSvc *service.FinancialsService) *Bot {
 	return &Bot{
 		token:       token,
 		secretToken: secretToken,
 		bondService: bondSvc,
+		finService:  finSvc,
 		subService:  subSvc,
 		notifier:    notifier,
 		httpClient:  &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
+// SetMessageSender allows hooking into SendMessage for tests.
+func (b *Bot) SetMessageSender(fn func(ctx context.Context, chatID int64, text string) error) {
+	b.messageSender = fn
+}
+
+// HandleIncomingMessage dispatches an incoming user message directly (e.g. in test suites).
+func (b *Bot) HandleIncomingMessage(ctx context.Context, chatID, userID int64, text string) {
+	msg := &Message{
+		Chat: &Chat{ID: chatID},
+		From: &User{ID: userID},
+		Text: text,
+	}
+	b.handleMessage(ctx, msg)
+}
+
 // SendMessage sends an outgoing message to a Telegram chat.
 func (b *Bot) SendMessage(ctx context.Context, chatID int64, text string) error {
+	if b.messageSender != nil {
+		return b.messageSender(ctx, chatID, text)
+	}
+
 	if b.token == "" {
 		log.Printf("[MOCK SEND] Chat %d: %s\n", chatID, text)
 		return nil
@@ -180,6 +203,46 @@ func (b *Bot) handleMessage(ctx context.Context, msg *Message) {
 		}
 		_ = b.SendMessage(ctx, chatID, FormatBondPassport(bond, marketData, payments))
 		return
+	}
+
+	parts := strings.Fields(text)
+	if len(parts) > 0 {
+		cmd := strings.ToLower(strings.SplitN(parts[0], "@", 2)[0])
+		if cmd == "/balance" || cmd == "/bal" {
+			if len(parts) < 2 {
+				_ = b.SendMessage(ctx, chatID, "Использование: `/balance <ISIN/ИНН/Тикер>`\nПример: `/balance RU000A107456` или `/balance 7736050003`")
+				return
+			}
+			query := parts[1]
+			if b.finService == nil {
+				_ = b.SendMessage(ctx, chatID, "⚠️ Сервис финансовой отчетности временно недоступен\\.")
+				return
+			}
+			balance, err := b.finService.GetIssuerBalance(ctx, query)
+			if err != nil {
+				if errors.Is(err, service.ErrInvalidIdentifier) {
+					_ = b.SendMessage(ctx, chatID, "⚠️ Неверный формат запроса\\. Укажите корректный ISIN \\(12 знаков\\), ИНН \\(10 или 12 цифр\\) или тикер\\.")
+					return
+				}
+				if errors.Is(err, service.ErrInvalidINNChecksum) {
+					_ = b.SendMessage(ctx, chatID, "⚠️ Неверная контрольная сумма ИНН\\. Проверьте правильность введенных цифр\\.")
+					return
+				}
+				if errors.Is(err, service.ErrIssuerNotFound) {
+					_ = b.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Эмитент по запросу *%s* не найден в базе ГИР БО \\(ФНС\\)\\.", escapeMarkdown(query)))
+					return
+				}
+				if errors.Is(err, service.ErrBondNotFound) {
+					_ = b.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Облигация *%s* не найдена\\.", escapeMarkdown(query)))
+					return
+				}
+				log.Printf("GetIssuerBalance error for query %q: %v", query, err)
+				_ = b.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Не удалось получить баланс для *%s*\\. Проверьте правильность запроса или повторите позже\\.", escapeMarkdown(query)))
+				return
+			}
+			_ = b.SendMessage(ctx, chatID, FormatIssuerBalance(balance))
+			return
+		}
 	}
 
 	if text == "/today" {
@@ -324,6 +387,7 @@ func (b *Bot) sendHelp(ctx context.Context, chatID int64) {
 	helpText := "🤖 *Бот данных по облигациям MOEX и СПБ Биржи*\n\n" +
 		"🔍 *Поиск и информация:*\n" +
 		"• `/bond <ISIN/Тикер>` — паспорт облигации и график выплат\n" +
+		"• `/balance <ISIN/ИНН/Тикер>` — финансовый баланс и долговая нагрузка \\(ФНС ГИР БО\\)\n" +
 		"• `/today` — выплаты на сегодня по вашим бумагам\n" +
 		"• `/cal 2026-10-15` — выплаты на конкретную дату\n\n" +
 		"📁 *Группы и портфели:*\n" +

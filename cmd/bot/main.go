@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"telegram-bot-moex/internal/provider/bfo"
 	"telegram-bot-moex/internal/provider/composite"
 	"telegram-bot-moex/internal/provider/moex"
 	"telegram-bot-moex/internal/provider/spbe"
@@ -29,22 +30,25 @@ func main() {
 
 	log.Printf("Starting MOEX & SPBE Bonds Telegram Bot on port %s...", port)
 
-	// In-memory store (or Firestore on GCP) and market cache
+	// In-memory store (or Firestore on GCP) and caches
 	store := memory.NewStore()
 	marketCache := memory.NewMarketDataCache()
+	finCache := memory.NewFinancialsCache()
 
-	// Unauthenticated exchange providers
+	// Unauthenticated exchange providers and BFO client
 	moexClient := moex.NewClient(nil)
 	spbeClient := spbe.NewClient()
 	compositeProv := composite.NewProvider(moexClient, spbeClient)
+	bfoClient := bfo.NewClient(nil)
 
 	// Business services
 	bondSvc := service.NewBondService(compositeProv, store, marketCache)
+	finSvc := service.NewFinancialsService(compositeProv, bfoClient, finCache)
 	subSvc := service.NewSubscriptionService(store)
 
 	var bot *telegram.Bot
 	notifier := service.NewNotifierService(compositeProv, store, nil)
-	bot = telegram.NewBot(botToken, secretToken, bondSvc, subSvc, notifier)
+	bot = telegram.NewBot(botToken, secretToken, bondSvc, subSvc, notifier, finSvc)
 
 	// Wire dispatcher back to bot
 	notifier = service.NewNotifierService(compositeProv, store, bot)

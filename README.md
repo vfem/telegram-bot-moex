@@ -13,6 +13,7 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 ## Features
 
 - **Bond Profiles & Passports:** Instant lookup by ISIN, ticker, or Russian issuer name (`/bond SU26238RMFS4`, `/bond ЕвроТранс`).
+- **Issuer Balance Sheets & Financial Health:** Instant accounting summary from official FNS GBO (`/balance RU000A107456`, `/bal 7736050003`) with assets, equity, total/net debt, Debt/Equity ratio, risk scoring (🟢 Low / 🟡 Moderate / 🔴 High), revenue, net profit, and auditor.
 - **Payment Calendars:**
   - `/today` — view coupon and amortization payments scheduled for today across watched bonds.
   - `/calendar 2026-10-15` — inspect all scheduled cash flows for any given date.
@@ -25,6 +26,7 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 - **100% Unauthenticated Public Providers:**
   - **MOEX ISS API:** Official unauthenticated JSON REST endpoints (`iss.moex.com`) for bond specifications, quotes, and bondization cash flows.
   - **SPB Exchange:** Public listing CSV ingestion and public disclosure feed tracking.
+  - **ГИР БО (bo.nalog.gov.ru):** Official public accounting reports (Form 1 & Form 2) by issuer INN.
 
 ---
 
@@ -35,6 +37,8 @@ The project follows Behavior-Driven Development (BDD). Scenarios are defined in 
 - `features/bonds_on_demand.feature`: On-demand bond queries, searches, and calendar payments.
 - `features/bonds_subscription.feature`: User subscriptions, scheduled daily digests, and placement alerts.
 - `features/dual_exchange_providers.feature`: Dual-exchange data ingestion and resolution.
+- `features/issuer_balance_sheet.feature`: Issuer balance sheets, debt multiples, and risk scoring.
+- `features/webhook_security.feature`: Fail-closed webhook security and endpoint method enforcement.
 
 ### Running BDD Tests
 
@@ -53,18 +57,22 @@ go test -v ./tests/bdd
 ├── features/                       # Gherkin BDD specification files
 │   ├── bonds_on_demand.feature
 │   ├── bonds_subscription.feature
-│   └── dual_exchange_providers.feature
+│   ├── dual_exchange_providers.feature
+│   ├── issuer_balance_sheet.feature
+│   └── webhook_security.feature
 ├── internal/
-│   ├── domain/                     # Core domain entities (Bond, Payment, User, Group)
-│   ├── provider/                   # Unauthenticated market data providers
+│   ├── domain/                     # Core domain entities (Bond, Balance, MarketData, Payment)
+│   ├── provider/                   # Unauthenticated market data & financials providers
 │   │   ├── moex/                   # MOEX ISS REST client
 │   │   ├── spbe/                   # SPB Exchange public feeds
+│   │   ├── bfo/                    # FNS GBO (bo.nalog.gov.ru) client
 │   │   └── composite/              # Multi-exchange federated provider
-│   ├── service/                    # Application services (bonds, subscriptions, notifier)
+│   ├── service/                    # Application services (bonds, financials, subscriptions)
 │   ├── store/                      # Storage abstraction & in-memory / Firestore store
 │   └── telegram/                   # Webhook parser, command handlers, and formatters
 ├── tests/
-│   └── bdd/                        # Godog BDD test suite & step definitions
+│   ├── bdd/                        # Godog BDD test suite & step definitions
+│   └── integration/                # Live network probe integration tests
 ├── Dockerfile                      # Ultra-light Alpine multi-stage build (<20 MB)
 └── go.mod
 ```

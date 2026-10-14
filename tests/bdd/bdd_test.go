@@ -14,6 +14,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	registerProviderSteps(sc, tc)
 	registerMarketDataSteps(sc, tc)
 	registerSecuritySteps(sc, tc)
+	registerBalanceSteps(sc, tc)
 }
 
 func TestFeatures(t *testing.T) {

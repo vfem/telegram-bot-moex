@@ -27,3 +27,8 @@ type BondProvider interface {
 	// GetNewAnnouncements returns recent new bond placement announcements.
 	GetNewAnnouncements(ctx context.Context, since time.Time) ([]domain.Announcement, error)
 }
+
+// FinancialsProvider specifies the contract for querying issuer financial statements (balance sheet & results).
+type FinancialsProvider interface {
+	GetIssuerBalance(ctx context.Context, inn string) (*domain.IssuerBalance, error)
+}

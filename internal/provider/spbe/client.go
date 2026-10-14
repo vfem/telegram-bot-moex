@@ -162,4 +162,3 @@ func (c *Client) GetMarketData(ctx context.Context, identifier string) (*domain.
 func (c *Client) GetNewAnnouncements(ctx context.Context, since time.Time) ([]domain.Announcement, error) {
 	return nil, nil
 }
-

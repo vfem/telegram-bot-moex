@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"telegram-bot-moex/internal/domain"
 )
@@ -18,4 +19,12 @@ type Store interface {
 type MarketDataCache interface {
 	Get(isin string) (*domain.MarketData, bool)
 	Set(isin string, data *domain.MarketData)
+}
+
+// FinancialsCache defines operations for caching annual financial statements of issuers.
+type FinancialsCache interface {
+	Get(inn string) (*domain.IssuerBalance, bool)
+	Set(inn string, balance *domain.IssuerBalance)
+	SetNotFound(inn string, ttl time.Duration)
+	IsNotFound(inn string) bool
 }

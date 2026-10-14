@@ -11,12 +11,12 @@ import (
 
 func registerSecuritySteps(sc *godog.ScenarioContext, tc *TestContext) {
 	sc.Step(`^a bot initialized with secret token "([^"]*)"$`, func(secret string) error {
-		tc.bot = telegram.NewBot("", secret, tc.bondService, tc.subService, tc.notifier)
+		tc.bot = telegram.NewBot("", secret, tc.bondService, tc.subService, tc.notifier, tc.finService)
 		return nil
 	})
 
 	sc.Step(`^a bot initialized in production mode with bot token "([^"]*)" and no secret token$`, func(token string) error {
-		tc.bot = telegram.NewBot(token, "", tc.bondService, tc.subService, tc.notifier)
+		tc.bot = telegram.NewBot(token, "", tc.bondService, tc.subService, tc.notifier, tc.finService)
 		return nil
 	})
 
@@ -58,7 +58,7 @@ func executeRequest(tc *TestContext, method, path string, body *strings.Reader, 
 	rec := httptest.NewRecorder()
 
 	if tc.bot == nil {
-		tc.bot = telegram.NewBot("", "", tc.bondService, tc.subService, tc.notifier)
+		tc.bot = telegram.NewBot("", "", tc.bondService, tc.subService, tc.notifier, tc.finService)
 	}
 
 	switch path {

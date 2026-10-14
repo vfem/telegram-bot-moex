@@ -51,7 +51,7 @@ func setupTestBot(token, secretToken string) *Bot {
 	bondSvc := service.NewBondService(prov, memStore, marketCache)
 	subSvc := service.NewSubscriptionService(memStore)
 	notifier := service.NewNotifierService(prov, memStore, nil)
-	return NewBot(token, secretToken, bondSvc, subSvc, notifier)
+	return NewBot(token, secretToken, bondSvc, subSvc, notifier, nil)
 }
 
 func TestWebhookHandler_MethodNotAllowed(t *testing.T) {
@@ -165,7 +165,7 @@ func TestCronDailyDigestHandler_ErrorSanitization(t *testing.T) {
 	bondSvc := service.NewBondService(prov, failingStore, marketCache)
 	subSvc := service.NewSubscriptionService(failingStore)
 	notifier := service.NewNotifierService(prov, failingStore, nil)
-	bot := NewBot("bot-token", "secret-token", bondSvc, subSvc, notifier)
+	bot := NewBot("bot-token", "secret-token", bondSvc, subSvc, notifier, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/cron/daily-digest", bytes.NewReader(nil))
 	rec := httptest.NewRecorder()
@@ -181,5 +181,28 @@ func TestCronDailyDigestHandler_ErrorSanitization(t *testing.T) {
 	}
 	if !strings.Contains(body, "Internal server error") {
 		t.Fatalf("expected 'Internal server error', got: %s", body)
+	}
+}
+
+func TestBot_StaticHelp_MarkdownV2(t *testing.T) {
+	bot := setupTestBot("bot-token", "secret-token")
+	var capturedMsg string
+	bot.SetMessageSender(func(ctx context.Context, chatID int64, text string) error {
+		capturedMsg = text
+		return nil
+	})
+
+	bot.HandleIncomingMessage(context.Background(), 123, 456, "/help")
+
+	if capturedMsg == "" {
+		t.Fatal("expected help message to be sent, got empty string")
+	}
+
+	// Verify (ФНС ГИР БО) has properly escaped parentheses for MarkdownV2
+	if !strings.Contains(capturedMsg, `\(ФНС ГИР БО\)`) {
+		t.Errorf("expected help text to contain escaped parentheses `\\(ФНС ГИР БО\\)`, got:\n%s", capturedMsg)
+	}
+	if strings.Contains(capturedMsg, ` (ФНС ГИР БО)`) {
+		t.Errorf("found unescaped `(ФНС ГИР БО)` in help text:\n%s", capturedMsg)
 	}
 }

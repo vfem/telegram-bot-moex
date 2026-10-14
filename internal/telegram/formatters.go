@@ -329,3 +329,63 @@ func pluralizeTrades(n int) string {
 	}
 	return fmt.Sprintf("%d сделок", n)
 }
+
+// FormatIssuerBalance formats issuer balance sheet and financial results into a clean Telegram MarkdownV2 message.
+func FormatIssuerBalance(balance *domain.IssuerBalance) string {
+	if balance == nil {
+		return "📑 Данные финансовой отчетности недоступны\\."
+	}
+
+	var sb strings.Builder
+
+	// Sovereign case (OFZ / Minfin)
+	if balance.IsSovereign {
+		sb.WriteString(fmt.Sprintf("🏛 %s\n", bold("Суверенный эмитент: "+balance.IssuerName)))
+		sb.WriteString(fmt.Sprintf("ИНН: %s • Статус: %s\n\n", code(balance.INN), bold("Государственный долг")))
+		sb.WriteString("ℹ️ Государственные облигации \\(ОФЗ\\) обеспечены суверенным бюджетом Российской Федерации и не подлежат стандартной коммерческой отчетности по РСБУ\\.")
+		return sb.String()
+	}
+
+	// Credit organization / bank case
+	if balance.IsCreditOrg {
+		sb.WriteString(fmt.Sprintf("🏦 %s\n", bold("Кредитная организация: "+balance.IssuerName)))
+		sb.WriteString(fmt.Sprintf("ИНН: %s • Регулирование: %s\n\n", code(balance.INN), bold("Банк России (ЦБ РФ)")))
+		sb.WriteString("ℹ️ Банки и кредитные организации составляют финансовую отчетность по специальным стандартам Банка России \\(ЦБ РФ\\)\\. Стандартные формы бухгалтерского баланса РСБУ 1 и 2 не применяются\\.")
+		return sb.String()
+	}
+
+	// Corporate balance sheet
+	sb.WriteString(fmt.Sprintf("📑 %s\n", bold("Финансовый баланс: "+balance.IssuerName)))
+	source := balance.Source
+	if source == "" {
+		source = "ГИР БО (ФНС)"
+	}
+	sb.WriteString(fmt.Sprintf("ИНН: %s • Отчетность: %s г\\. \\(%s\\)\n\n", code(balance.INN), bold(fmt.Sprintf("%d", balance.ReportYear)), escapeMarkdown(source)))
+
+	sb.WriteString(fmt.Sprintf("💰 %s\n", bold("Активы и Капитал:")))
+	sb.WriteString(fmt.Sprintf("• Активы \\(баланс\\): %s\n", bold(domain.FormatMoney(balance.TotalAssets))))
+	sb.WriteString(fmt.Sprintf("• Собственный капитал: %s\n\n", bold(domain.FormatMoney(balance.Equity))))
+
+	sb.WriteString(fmt.Sprintf("💳 %s\n", bold("Долговая нагрузка:")))
+	sb.WriteString(fmt.Sprintf("• Совокупный долг: %s\n", bold(domain.FormatMoney(balance.TotalDebt))))
+	sb.WriteString(fmt.Sprintf("• Денежные средства: %s\n", bold(domain.FormatMoney(balance.CashEquivalents))))
+	sb.WriteString(fmt.Sprintf("• Чистый долг: %s\n", bold(domain.FormatMoney(balance.NetDebt))))
+
+	if balance.Equity <= 0 {
+		sb.WriteString(fmt.Sprintf("• Долг / Капитал: %s \\(%s\\)\n\n", bold("отриц. капитал"), bold(balance.RiskLevel.Label())))
+	} else if balance.NetDebt < 0 {
+		sb.WriteString(fmt.Sprintf("• Долг / Капитал: %s \\(%s\\)\n\n", bold("Чистая ден. позиция"), bold(balance.RiskLevel.Label())))
+	} else {
+		sb.WriteString(fmt.Sprintf("• Долг / Капитал: %s \\(%s\\)\n\n", bold(fmt.Sprintf("%.2f", balance.DebtToEquity)), bold(balance.RiskLevel.Label())))
+	}
+
+	sb.WriteString(fmt.Sprintf("📊 %s\n", bold("Результаты года:")))
+	sb.WriteString(fmt.Sprintf("• Выручка: %s\n", bold(domain.FormatMoney(balance.Revenue))))
+	sb.WriteString(fmt.Sprintf("• Чистая прибыль: %s\n", bold(domain.FormatMoney(balance.NetProfit))))
+
+	if balance.AuditorName != "" {
+		sb.WriteString(fmt.Sprintf("\n📋 Аудитор: %s", escapeMarkdown(balance.AuditorName)))
+	}
+
+	return sb.String()
+}
