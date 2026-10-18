@@ -8,6 +8,7 @@ import (
 	"telegram-bot-moex/internal/domain"
 	"telegram-bot-moex/internal/provider/bfo"
 	"telegram-bot-moex/internal/provider/composite"
+	"telegram-bot-moex/internal/provider/edisclosure"
 	"telegram-bot-moex/internal/provider/moex"
 	"telegram-bot-moex/internal/provider/spbe"
 	"telegram-bot-moex/internal/service"
@@ -48,6 +49,10 @@ type TestContext struct {
 	lastResponseBody  string
 	finService        *service.FinancialsService
 	finCache          *memory.FinancialsCache
+	factsService      *service.FactsService
+	factsCache        *memory.FactsCache
+	mockFactsProv     *mockBddFactsProvider
+	currentFact       domain.MaterialFact
 }
 
 type mockBddBfoProvider struct {
@@ -61,6 +66,17 @@ func (m *mockBddBfoProvider) GetIssuerBalance(ctx context.Context, inn string) (
 	return nil, fmt.Errorf("no reports found for INN %s: %w", inn, bfo.ErrOrganizationNotFound)
 }
 
+type mockBddFactsProvider struct {
+	facts map[string][]domain.MaterialFact
+}
+
+func (m *mockBddFactsProvider) GetRecentFacts(ctx context.Context, inn string, limit int) ([]domain.MaterialFact, error) {
+	if list, ok := m.facts[inn]; ok {
+		return list, nil
+	}
+	return nil, edisclosure.ErrNoFactsFound
+}
+
 func newTestContext() *TestContext {
 	memStore := memory.NewStore()
 	spbeClient := spbe.NewClient()
@@ -69,31 +85,37 @@ func newTestContext() *TestContext {
 	mockProv := newMockBondProvider()
 	marketCache := memory.NewMarketDataCache()
 	finCache := memory.NewFinancialsCache()
+	factsCache := memory.NewFactsCache()
 	mockBfo := &mockBddBfoProvider{reports: make(map[string]*domain.IssuerBalance)}
+	mockFacts := &mockBddFactsProvider{facts: make(map[string][]domain.MaterialFact)}
 
 	bondSvc := service.NewBondService(comp, memStore, marketCache)
 	finSvc := service.NewFinancialsService(mockProv, mockBfo, finCache)
+	factsSvc := service.NewFactsService(mockProv, mockFacts, factsCache)
 	subSvc := service.NewSubscriptionService(memStore)
 	notifier := service.NewNotifierService(comp, memStore, nil)
 
-	bot := telegram.NewBot("", "", bondSvc, subSvc, notifier, finSvc)
+	bot := telegram.NewBot("", "", bondSvc, subSvc, notifier, finSvc, factsSvc)
 
 	return &TestContext{
-		ctx:          context.Background(),
-		memStore:     memStore,
-		moexClient:   moexClient,
-		spbeClient:   spbeClient,
-		composite:    comp,
-		bondService:  bondSvc,
-		finService:   finSvc,
-		finCache:     finCache,
-		mockBfoProv:  mockBfo,
-		subService:   subSvc,
-		notifier:     notifier,
-		marketCache:  marketCache,
-		mockBondProv: mockProv,
-		bot:          bot,
-		mockPayments: make(map[string][]domain.Payment),
-		mockBonds:    make(map[string]domain.Bond),
+		ctx:           context.Background(),
+		memStore:      memStore,
+		moexClient:    moexClient,
+		spbeClient:    spbeClient,
+		composite:     comp,
+		bondService:   bondSvc,
+		finService:    finSvc,
+		finCache:      finCache,
+		factsService:  factsSvc,
+		factsCache:    factsCache,
+		mockBfoProv:   mockBfo,
+		mockFactsProv: mockFacts,
+		subService:    subSvc,
+		notifier:      notifier,
+		marketCache:   marketCache,
+		mockBondProv:  mockProv,
+		bot:           bot,
+		mockPayments:  make(map[string][]domain.Payment),
+		mockBonds:     make(map[string]domain.Bond),
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"telegram-bot-moex/internal/provider/bfo"
 	"telegram-bot-moex/internal/provider/composite"
+	"telegram-bot-moex/internal/provider/edisclosure"
 	"telegram-bot-moex/internal/provider/moex"
 	"telegram-bot-moex/internal/provider/spbe"
 	"telegram-bot-moex/internal/service"
@@ -34,24 +35,27 @@ func main() {
 	store := memory.NewStore()
 	marketCache := memory.NewMarketDataCache()
 	finCache := memory.NewFinancialsCache()
+	factsCache := memory.NewFactsCache()
 
-	// Unauthenticated exchange providers and BFO client
+	// Unauthenticated exchange providers, BFO client, and disclosure client
 	moexClient := moex.NewClient(nil)
 	spbeClient := spbe.NewClient()
 	compositeProv := composite.NewProvider(moexClient, spbeClient)
 	bfoClient := bfo.NewClient(nil)
+	edisclosureClient := edisclosure.NewClient(nil)
 
 	// Business services
 	bondSvc := service.NewBondService(compositeProv, store, marketCache)
 	finSvc := service.NewFinancialsService(compositeProv, bfoClient, finCache)
+	factsSvc := service.NewFactsService(compositeProv, edisclosureClient, factsCache)
 	subSvc := service.NewSubscriptionService(store)
 
-	var bot *telegram.Bot
 	notifier := service.NewNotifierService(compositeProv, store, nil)
-	bot = telegram.NewBot(botToken, secretToken, bondSvc, subSvc, notifier, finSvc)
+	notifier.SetFactsProvider(edisclosureClient)
+	bot := telegram.NewBot(botToken, secretToken, bondSvc, subSvc, notifier, finSvc, factsSvc)
 
-	// Wire dispatcher back to bot
-	notifier = service.NewNotifierService(compositeProv, store, bot)
+	// Wire dispatcher and facts provider on the existing notifier instance (F2)
+	notifier.SetDispatcher(bot)
 
 	// HTTP Routing for Cloud Run
 	mux := http.NewServeMux()

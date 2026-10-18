@@ -49,6 +49,7 @@ type Bot struct {
 	secretToken   string
 	bondService   *service.BondService
 	finService    *service.FinancialsService
+	factsService  *service.FactsService
 	subService    *service.SubscriptionService
 	notifier      *service.NotifierService
 	httpClient    *http.Client
@@ -56,19 +57,21 @@ type Bot struct {
 }
 
 // NewBot instantiates a Bot with all required services.
-func NewBot(token, secretToken string, bondSvc *service.BondService, subSvc *service.SubscriptionService, notifier *service.NotifierService, finSvc *service.FinancialsService) *Bot {
+func NewBot(token, secretToken string, bondSvc *service.BondService, subSvc *service.SubscriptionService, notifier *service.NotifierService, finSvc *service.FinancialsService, factsSvc *service.FactsService) *Bot {
 	return &Bot{
-		token:       token,
-		secretToken: secretToken,
-		bondService: bondSvc,
-		finService:  finSvc,
-		subService:  subSvc,
-		notifier:    notifier,
-		httpClient:  &http.Client{Timeout: 10 * time.Second},
+		token:        token,
+		secretToken:  secretToken,
+		bondService:  bondSvc,
+		finService:   finSvc,
+		factsService: factsSvc,
+		subService:   subSvc,
+		notifier:     notifier,
+		httpClient:   &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
 // SetMessageSender allows hooking into SendMessage for tests.
+
 func (b *Bot) SetMessageSender(fn func(ctx context.Context, chatID int64, text string) error) {
 	b.messageSender = fn
 }
@@ -243,6 +246,42 @@ func (b *Bot) handleMessage(ctx context.Context, msg *Message) {
 			_ = b.SendMessage(ctx, chatID, FormatIssuerBalance(balance))
 			return
 		}
+
+		if cmd == "/facts" || cmd == "/f" {
+			if len(parts) < 2 {
+				_ = b.SendMessage(ctx, chatID, "Использование: `/facts <ISIN/ИНН/Тикер>`\nПример: `/facts RU000A107456` или `/facts 7708304947`")
+				return
+			}
+			query := parts[1]
+			if b.factsService == nil {
+				_ = b.SendMessage(ctx, chatID, "⚠️ Сервис существенных фактов временно недоступен\\.")
+				return
+			}
+			res, err := b.factsService.GetIssuerFacts(ctx, query, 5)
+			if err != nil {
+				if errors.Is(err, service.ErrInvalidIdentifier) {
+					_ = b.SendMessage(ctx, chatID, "⚠️ Неверный формат запроса\\. Укажите корректный ISIN \\(12 знаков\\), ИНН \\(10 или 12 цифр\\) или тикер\\.")
+					return
+				}
+				if errors.Is(err, service.ErrInvalidINNChecksum) {
+					_ = b.SendMessage(ctx, chatID, "⚠️ Неверная контрольная сумма ИНН\\. Проверьте правильность введенных цифр\\.")
+					return
+				}
+				if errors.Is(err, service.ErrBondNotFound) {
+					_ = b.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Облигация *%s* не найдена\\.", escapeMarkdown(query)))
+					return
+				}
+				if errors.Is(err, service.ErrNoMaterialFacts) {
+					_ = b.SendMessage(ctx, chatID, fmt.Sprintf("ℹ️ По запросу *%s* свежих существенных фактов не найдено\\.", escapeMarkdown(query)))
+					return
+				}
+				log.Printf("GetIssuerFacts error for query %q: %v", query, err)
+				_ = b.SendMessage(ctx, chatID, fmt.Sprintf("⚠️ Не удалось получить существенные факты для *%s*\\.", escapeMarkdown(query)))
+				return
+			}
+			_ = b.SendMessage(ctx, chatID, FormatMaterialFacts(res.IssuerName, res.INN, res.Facts))
+			return
+		}
 	}
 
 	if text == "/today" {
@@ -341,8 +380,7 @@ func (b *Bot) handleGroup(ctx context.Context, userID, chatID int64, text string
 		return
 	}
 
-	user, err := b.subService.EnsureUser(ctx, userID, chatID)
-	if err != nil {
+	if _, err := b.subService.EnsureUser(ctx, userID, chatID); err != nil {
 		_ = b.SendMessage(ctx, chatID, "Ошибка пользователя\\.")
 		return
 	}
@@ -355,7 +393,10 @@ func (b *Bot) handleGroup(ctx context.Context, userID, chatID int64, text string
 			return
 		}
 		name := parts[2]
-		user.AddBondToGroup(name, "")
+		if _, err := b.subService.AddBondToGroup(ctx, userID, chatID, name, ""); err != nil {
+			_ = b.SendMessage(ctx, chatID, "Ошибка сохранения группы\\.")
+			return
+		}
 		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("✅ Группа *%s* создана\\.", escapeMarkdown(name)))
 
 	case "add":
@@ -365,7 +406,10 @@ func (b *Bot) handleGroup(ctx context.Context, userID, chatID int64, text string
 		}
 		name := parts[2]
 		isin := strings.ToUpper(parts[3])
-		user.AddBondToGroup(name, isin)
+		if _, err := b.subService.AddBondToGroup(ctx, userID, chatID, name, isin); err != nil {
+			_ = b.SendMessage(ctx, chatID, "Ошибка сохранения группы\\.")
+			return
+		}
 		_ = b.SendMessage(ctx, chatID, fmt.Sprintf("✅ Облигация `%s` добавлена в группу *%s*\\.", isin, escapeMarkdown(name)))
 
 	case "show":
@@ -388,6 +432,7 @@ func (b *Bot) sendHelp(ctx context.Context, chatID int64) {
 		"🔍 *Поиск и информация:*\n" +
 		"• `/bond <ISIN/Тикер>` — паспорт облигации и график выплат\n" +
 		"• `/balance <ISIN/ИНН/Тикер>` — финансовый баланс и долговая нагрузка \\(ФНС ГИР БО\\)\n" +
+		"• `/facts <ISIN/ИНН/Тикер>` \\(алиас `/f`\\) — существенные факты и события эмитента\n" +
 		"• `/today` — выплаты на сегодня по вашим бумагам\n" +
 		"• `/cal 2026-10-15` — выплаты на конкретную дату\n\n" +
 		"📁 *Группы и портфели:*\n" +

@@ -13,6 +13,7 @@ import (
 	"telegram-bot-moex/internal/domain"
 	"telegram-bot-moex/internal/provider/bfo"
 	"telegram-bot-moex/internal/provider/composite"
+	"telegram-bot-moex/internal/provider/edisclosure"
 	"telegram-bot-moex/internal/provider/moex"
 	"telegram-bot-moex/internal/provider/spbe"
 	"telegram-bot-moex/internal/service"
@@ -25,7 +26,7 @@ func TestLiveMOEXMarketData(t *testing.T) {
 	spbeClient := spbe.NewClient()
 	comp := composite.NewProvider(moexClient, spbeClient)
 	store := memory.NewStore()
-	svc := service.NewBondService(comp, store)
+	svc := service.NewBondService(comp, store, memory.NewMarketDataCache())
 
 	for _, isin := range []string{"SU26238RMFS4", "RU000A107456"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -78,4 +79,35 @@ func TestLiveBFOBalance(t *testing.T) {
 
 	sovMsg := telegram.FormatIssuerBalance(sovBal)
 	fmt.Printf("\n--- Live Formatted Balance for Sovereign OFZ ---\n%s\n", sovMsg)
+}
+
+func TestLiveMaterialFacts(t *testing.T) {
+	moexClient := moex.NewClient(nil)
+	spbeClient := spbe.NewClient()
+	comp := composite.NewProvider(moexClient, spbeClient)
+	factsClient := edisclosure.NewClient(nil)
+	factsCache := memory.NewFactsCache()
+	factsSvc := service.NewFactsService(comp, factsClient, factsCache)
+
+	// Test 1: Corporate bond by ISIN (RU000A107456)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	res, err := factsSvc.GetIssuerFacts(ctx, "RU000A107456", 5)
+	cancel()
+
+	require.NoError(t, err, "failed to get live material facts for RU000A107456")
+	require.NotNil(t, res)
+	require.NotEmpty(t, res.INN)
+	require.NotEmpty(t, res.Facts, "expected live material facts for RU000A107456")
+
+	msg := telegram.FormatMaterialFacts(res.IssuerName, res.INN, res.Facts)
+	fmt.Printf("\n--- Live Formatted Material Facts for RU000A107456 ---\n%s\n", msg)
+
+	// Test 2: Sovereign bond (SU26238RMFS4)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	sovRes, err2 := factsSvc.GetIssuerFacts(ctx2, "SU26238RMFS4", 5)
+	cancel2()
+
+	require.NoError(t, err2, "failed to get sovereign facts for SU26238RMFS4")
+	require.NotNil(t, sovRes)
+	require.True(t, sovRes.IsSovereign)
 }

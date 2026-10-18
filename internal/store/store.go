@@ -13,6 +13,8 @@ type Store interface {
 	SaveUser(ctx context.Context, user *domain.User) error
 	GetUsersSubscribedToDailyPayments(ctx context.Context) ([]*domain.User, error)
 	GetUsersSubscribedToAnnouncements(ctx context.Context) ([]*domain.User, error)
+	GetUsersWithMonitoredBonds(ctx context.Context) ([]*domain.User, error)
+	GetUsersMonitoringISIN(ctx context.Context, isin string) ([]*domain.User, error)
 }
 
 // MarketDataCache defines operations for caching real-time bond quotes and liquidity data.
@@ -25,6 +27,14 @@ type MarketDataCache interface {
 type FinancialsCache interface {
 	Get(inn string) (*domain.IssuerBalance, bool)
 	Set(inn string, balance *domain.IssuerBalance)
+	SetNotFound(inn string, ttl time.Duration)
+	IsNotFound(inn string) bool
+}
+
+// FactsCache defines operations for caching corporate disclosures and material facts.
+type FactsCache interface {
+	Get(inn string) ([]domain.MaterialFact, bool)
+	Set(inn string, facts []domain.MaterialFact)
 	SetNotFound(inn string, ttl time.Duration)
 	IsNotFound(inn string) bool
 }

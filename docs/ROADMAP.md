@@ -137,25 +137,29 @@
 
 ---
 
-### Фаза 3: Лента существенных фактов и события
-- [ ] **3.1. Модель данных:**
-  - Создать структуру `domain.MaterialFact`:
+### Фаза 3: Лента существенных фактов и события — ✅ Завершено
+- [x] **3.1. Модель данных (`internal/domain/fact.go`):**
+  - Реализована структура `domain.MaterialFact` и классификатор `domain.ClassifyFact`:
     ```go
     type MaterialFact struct {
-        ID          string
-        INN         string
-        Date        time.Time
-        Title       string
-        Category    FactCategory // Default, Offer, Meeting, Dividend, Court, Restructuring
-        Importance  FactSeverity // Critical, Warning, Info
-        URL         string
+        ID          string       `json:"id"`
+        INN         string       `json:"inn"`
+        ISIN        string       `json:"isin,omitempty"`
+        IssuerName  string       `json:"issuer_name,omitempty"`
+        Title       string       `json:"title"`
+        Summary     string       `json:"summary,omitempty"`
+        Category    FactCategory `json:"category"` // Дефолт / Обязательства, Оферта, Купонные выплаты, СД и Собрания акционеров, Судебные споры, Рейтинговые действия, Прочее
+        Severity    FactSeverity `json:"severity"` // CRITICAL, WARNING, INFO
+        PublishedAt time.Time    `json:"published_at"`
+        URL         string       `json:"url"`
+        Source      string       `json:"source,omitempty"`
     }
     ```
-- [ ] **3.2. Провайдер раскрытия:**
-  - Реализовать парсер / RSS-клиент ленты существенных фактов (e-disclosure.ru / лента MOEX).
-  - Алгоритм классификации критичности (выделение красных флагов: «неисполнение обязательств», «оферта», «созыв собрания»).
-- [ ] **3.3. Подписка на события эмитента:**
-  - Добавить поддержку отслеживания фактов по подписке (`/sub add <ISIN>` теперь включает критические алерты по дефолтам и офертам).
+- [x] **3.2. Провайдер раскрытия и сервис:**
+  - Реализован клиент `internal/provider/edisclosure/client.go` (RSS XML, JSON и MOEX ISS `sitenews`/`news`), кэш `internal/store/memory/facts_cache.go` (TTL 45 минут), сервис `FactsService` (`singleflight` + валидация контрольной суммы ИНН) и команда `/facts <ISIN|ИНН|Тикер>` (алиас `/f`).
+- [x] **3.3. Подписка на события эмитента:**
+  - Реализован метод `NotifierService.NotifyMaterialFact` с дедупликацией: отслеживание бумаг через `/sub add <ISIN>` отправляет проактивные алерты по событиям `CRITICAL` и `WARNING`, игнорируя рутинные `INFO`-сообщения.
+
 
 ---
 

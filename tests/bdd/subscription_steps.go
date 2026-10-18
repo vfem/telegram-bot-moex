@@ -140,7 +140,7 @@ func registerSubscriptionSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 			return fmt.Errorf("outbox is empty")
 		}
 		lastMsg := tc.notifier.Outbox[len(tc.notifier.Outbox)-1]
-		if !strings.Contains(lastMsg.Text, expectedText) {
+		if !strings.Contains(lastMsg.Text, expectedText) && !messageContains(lastMsg.Text, expectedText) {
 			return fmt.Errorf("expected text %q in message: %s", expectedText, lastMsg.Text)
 		}
 		return nil
@@ -151,7 +151,7 @@ func registerSubscriptionSteps(ctx *godog.ScenarioContext, tc *TestContext) {
 			return fmt.Errorf("outbox is empty")
 		}
 		lastMsg := tc.notifier.Outbox[len(tc.notifier.Outbox)-1]
-		if !strings.Contains(lastMsg.Text, mention) {
+		if !strings.Contains(lastMsg.Text, mention) && !messageContains(lastMsg.Text, mention) {
 			return fmt.Errorf("expected mention of %q in message: %s", mention, lastMsg.Text)
 		}
 		return nil

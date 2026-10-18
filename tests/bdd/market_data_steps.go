@@ -186,7 +186,11 @@ func messageContains(msg, substr string) bool {
 		return true
 	}
 	unescaped := strings.ReplaceAll(msg, "\\", "")
-	return strings.Contains(unescaped, substr)
+	if strings.Contains(unescaped, substr) {
+		return true
+	}
+	plain := strings.NewReplacer("\\", "", "*", "", "`", "").Replace(msg)
+	return strings.Contains(plain, substr)
 }
 
 func escapeMarkdownText(s string) string {

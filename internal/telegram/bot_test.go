@@ -51,7 +51,7 @@ func setupTestBot(token, secretToken string) *Bot {
 	bondSvc := service.NewBondService(prov, memStore, marketCache)
 	subSvc := service.NewSubscriptionService(memStore)
 	notifier := service.NewNotifierService(prov, memStore, nil)
-	return NewBot(token, secretToken, bondSvc, subSvc, notifier, nil)
+	return NewBot(token, secretToken, bondSvc, subSvc, notifier, nil, nil)
 }
 
 func TestWebhookHandler_MethodNotAllowed(t *testing.T) {
@@ -165,7 +165,7 @@ func TestCronDailyDigestHandler_ErrorSanitization(t *testing.T) {
 	bondSvc := service.NewBondService(prov, failingStore, marketCache)
 	subSvc := service.NewSubscriptionService(failingStore)
 	notifier := service.NewNotifierService(prov, failingStore, nil)
-	bot := NewBot("bot-token", "secret-token", bondSvc, subSvc, notifier, nil)
+	bot := NewBot("bot-token", "secret-token", bondSvc, subSvc, notifier, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/cron/daily-digest", bytes.NewReader(nil))
 	rec := httptest.NewRecorder()

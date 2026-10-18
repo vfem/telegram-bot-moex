@@ -87,3 +87,17 @@ func (s *SubscriptionService) AddMonitoredBond(ctx context.Context, telegramID, 
 	}
 	return user, nil
 }
+
+// AddBondToGroup creates a group (when isin == "") or adds an ISIN to a group and persists the user.
+func (s *SubscriptionService) AddBondToGroup(ctx context.Context, telegramID, chatID int64, groupName, isin string) (*domain.User, error) {
+	user, err := s.EnsureUser(ctx, telegramID, chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	user.AddBondToGroup(groupName, isin)
+	if err := s.store.SaveUser(ctx, user); err != nil {
+		return nil, err
+	}
+	return user, nil
+}

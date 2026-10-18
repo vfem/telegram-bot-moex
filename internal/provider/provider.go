@@ -32,3 +32,8 @@ type BondProvider interface {
 type FinancialsProvider interface {
 	GetIssuerBalance(ctx context.Context, inn string) (*domain.IssuerBalance, error)
 }
+
+// FactsProvider specifies the contract for retrieving material facts and corporate disclosures by INN.
+type FactsProvider interface {
+	GetRecentFacts(ctx context.Context, inn string, limit int) ([]domain.MaterialFact, error)
+}

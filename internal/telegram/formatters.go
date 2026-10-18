@@ -389,3 +389,76 @@ func FormatIssuerBalance(balance *domain.IssuerBalance) string {
 
 	return sb.String()
 }
+
+// escapeURL escapes ')' and '\' inside a MarkdownV2 inline URL target.
+func escapeURL(u string) string {
+	r := strings.NewReplacer(`\`, `\\`, `)`, `\)`)
+	return r.Replace(u)
+}
+
+// FormatMaterialFacts formats recent corporate disclosures and material facts into a Telegram MarkdownV2 message.
+func FormatMaterialFacts(issuerName, inn string, facts []domain.MaterialFact) string {
+	var sb strings.Builder
+	cleanINN := strings.TrimSpace(inn)
+	cleanIssuer := strings.TrimSpace(issuerName)
+
+	// Sovereign case (OFZ / Minfin)
+	if cleanINN == "7710168360" {
+		if cleanIssuer == "" {
+			cleanIssuer = "Министерство финансов Российской Федерации"
+		}
+		sb.WriteString(fmt.Sprintf("🏛 %s\n", bold("Суверенный эмитент: "+cleanIssuer)))
+		sb.WriteString(fmt.Sprintf("ИНН: %s • Статус: %s\n\n", code(cleanINN), bold("Государственный долг (ОФЗ)")))
+		sb.WriteString("ℹ️ Государственные облигации \\(ОФЗ\\) выпускаются Министерством финансов Российской Федерации и не подлежат корпоративному раскрытию существенных фактов по Положению Банка России № 714\\-П\\.")
+		return sb.String()
+	}
+
+	headerTitle := "Существенные факты эмитента"
+	if cleanIssuer != "" {
+		headerTitle = "Существенные факты: " + cleanIssuer
+	}
+	if cleanINN != "" {
+		sb.WriteString(fmt.Sprintf("⚠️ %s \\(ИНН %s\\)\n\n", bold(headerTitle), code(cleanINN)))
+	} else {
+		sb.WriteString(fmt.Sprintf("⚠️ %s\n\n", bold(headerTitle)))
+	}
+
+	if len(facts) == 0 {
+		sb.WriteString("ℹ️ По эмитенту нет свежих существенных фактов в ленте раскрытия\\.")
+		return sb.String()
+	}
+
+	limit := len(facts)
+	if limit > 5 {
+		limit = 5
+	}
+
+	for i := 0; i < limit; i++ {
+		f := facts[i]
+		if f.Category == "" || f.Severity == "" {
+			f.Classify()
+		}
+
+		dateStr := "н/д"
+		if !f.PublishedAt.IsZero() {
+			if f.PublishedAt.Hour() != 0 || f.PublishedAt.Minute() != 0 {
+				dateStr = f.PublishedAt.Format("02.01.2006 15:04")
+			} else {
+				dateStr = f.PublishedAt.Format("02.01.2006")
+			}
+		}
+
+		tag := fmt.Sprintf("\\[%s %s\\]", f.Severity.Emoji(), escapeMarkdown(f.Category.ShortTag()))
+		sb.WriteString(fmt.Sprintf("• %s %s: %s\n",
+			code(dateStr),
+			tag,
+			escapeMarkdown(f.Title),
+		))
+
+		if strings.HasPrefix(f.URL, "https://") || strings.HasPrefix(f.URL, "http://") {
+			sb.WriteString(fmt.Sprintf("  🔗 [Подробнее](%s)\n", escapeURL(f.URL)))
+		}
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}

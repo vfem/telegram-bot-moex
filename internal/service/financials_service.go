@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"telegram-bot-moex/internal/domain"
@@ -32,48 +31,12 @@ var (
 	negativeCacheTTL = 2 * time.Hour
 )
 
-type sfCall struct {
-	wg  sync.WaitGroup
-	val *domain.IssuerBalance
-	err error
-}
-
-type singleflightGroup struct {
-	mu sync.Mutex
-	m  map[string]*sfCall
-}
-
-func (g *singleflightGroup) Do(key string, fn func() (*domain.IssuerBalance, error)) (*domain.IssuerBalance, error) {
-	g.mu.Lock()
-	if g.m == nil {
-		g.m = make(map[string]*sfCall)
-	}
-	if c, ok := g.m[key]; ok {
-		g.mu.Unlock()
-		c.wg.Wait()
-		return c.val, c.err
-	}
-	c := new(sfCall)
-	c.wg.Add(1)
-	g.m[key] = c
-	g.mu.Unlock()
-
-	c.val, c.err = fn()
-	c.wg.Done()
-
-	g.mu.Lock()
-	delete(g.m, key)
-	g.mu.Unlock()
-
-	return c.val, c.err
-}
-
 // FinancialsService coordinates issuer balance sheet lookups, validation, and caching.
 type FinancialsService struct {
 	bondProvider provider.BondProvider
 	bfoProvider  provider.FinancialsProvider
 	cache        store.FinancialsCache
-	sf           singleflightGroup
+	sf           singleflightGroup[*domain.IssuerBalance]
 }
 
 // NewFinancialsService creates a new FinancialsService.
@@ -110,40 +73,12 @@ func (s *FinancialsService) GetIssuerBalance(ctx context.Context, identifier str
 	}
 
 	// 3. Resolve bond first to obtain its IssuerINN
-	bond, err := s.bondProvider.GetBond(ctx, id)
+	bond, err := resolveBondByIdentifier(ctx, s.bondProvider, id, identifier)
 	if err != nil {
-		// Try search fallback if lookupKey was a ticker or partial query
-		results, searchErr := s.bondProvider.SearchBonds(ctx, id)
-		if searchErr != nil || len(results) == 0 {
-			return nil, fmt.Errorf("%w: %s", ErrBondNotFound, identifier)
-		}
-		var matchedISIN string
-		for _, r := range results {
-			if strings.EqualFold(r.Ticker, id) || strings.EqualFold(r.ISIN, id) {
-				matchedISIN = r.ISIN
-				break
-			}
-		}
-		if matchedISIN == "" {
-			if len(results) == 1 {
-				matchedISIN = results[0].ISIN
-			} else {
-				return nil, fmt.Errorf("%w: неоднозначный тикер %s", ErrBondNotFound, identifier)
-			}
-		}
-		bond, err = s.bondProvider.GetBond(ctx, matchedISIN)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s", ErrBondNotFound, identifier)
-		}
+		return nil, err
 	}
 
-	// F4: Sovereign detection - require exact sovereign federal INN or exact federal Ministry name.
-	// Regional/sub-federal finance ministries (e.g. "Минфин Нижегородской области") do NOT qualify as federal sovereign debt.
-	isFederalSovereign := bond.IssuerINN == sovereignINN ||
-		strings.EqualFold(strings.TrimSpace(bond.Issuer), "Министерство финансов Российской Федерации") ||
-		strings.EqualFold(strings.TrimSpace(bond.Issuer), "Минфин РФ")
-
-	if isFederalSovereign {
+	if isFederalSovereignBond(bond) {
 		return &domain.IssuerBalance{
 			INN:         sovereignINN,
 			IssuerName:  bond.Issuer,
@@ -190,7 +125,6 @@ func (s *FinancialsService) getBalanceByINN(ctx context.Context, inn string, pre
 
 	// Singleflight deduplication: prevent dog-pile queries toward upstream FNS API
 	balance, err := s.sf.Do(inn, func() (*domain.IssuerBalance, error) {
-		// Double-check cache in case another flight populated it
 		if s.cache != nil {
 			if s.cache.IsNotFound(inn) {
 				return nil, fmt.Errorf("%w: ИНН %s", ErrIssuerNotFound, inn)
@@ -200,10 +134,12 @@ func (s *FinancialsService) getBalanceByINN(ctx context.Context, inn string, pre
 			}
 		}
 
-		b, fetchErr := s.bfoProvider.GetIssuerBalance(ctx, inn)
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+
+		b, fetchErr := s.bfoProvider.GetIssuerBalance(sfCtx, inn)
 		if fetchErr != nil {
 			errStr := strings.ToLower(fetchErr.Error())
-			// Negative cache on not found / no reports / empty statements
 			if strings.Contains(errStr, "not found") || strings.Contains(errStr, "no reports") || strings.Contains(errStr, "no bfo reports") || strings.Contains(errStr, "no financial statements") || strings.Contains(errStr, "no valid balance") {
 				if s.cache != nil {
 					s.cache.SetNotFound(inn, negativeCacheTTL)

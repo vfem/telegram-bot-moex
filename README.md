@@ -14,6 +14,7 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 
 - **Bond Profiles & Passports:** Instant lookup by ISIN, ticker, or Russian issuer name (`/bond SU26238RMFS4`, `/bond ЕвроТранс`, alias `/b`) with live quotes (% and currency), YTM, duration, daily volume, bid-ask spread, and liquidity scoring (`🔥 Высокая` / `⚡️ Средняя` / `⚠️ Низкая` / `🛑 Неликвид`).
 - **Issuer Balance Sheets & Financial Health:** Instant accounting summary from official FNS GBO (`/balance RU000A107456`, `/bal 7736050003`) with assets, equity, total/net debt, Debt/Equity ratio, risk scoring (🟢 Low / 🟡 Moderate / 🔴 High), revenue, net profit, and auditor.
+- **Material Facts & Corporate Events Monitoring:** On-demand lookup of recent corporate disclosures (`/facts RU000A107456`, `/f 7708304947`), automatic severity/category classification (`🚨 Дефолт`, `⚠️ Оферта`, `⚠️ Суд`, `ℹ️ Купон`, `ℹ️ СД`), and proactive push alerts for monitored bonds (`/sub add <ISIN>`).
 - **Payment Calendars:**
   - `/today` — view coupon and amortization payments scheduled for today across watched bonds.
   - `/calendar 2026-10-15` (alias `/cal`, supports `YYYY-MM-DD` and `DD.MM`) — inspect all scheduled cash flows for any given date.
@@ -22,23 +23,25 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 - **Subscriptions & Push Digests:**
   - `/sub pay` — daily morning digest (09:00 MSK) of coupon payments for monitored bonds.
   - `/sub new` — automated notifications for new primary bond placement announcements (сбор заявок).
-  - `/sub add <ISIN>` — add a bond to your monitored list.
+  - `/sub add <ISIN>` — add a bond to your monitored list (includes coupon digests and urgent `CRITICAL`/`WARNING` material fact alerts).
 - **100% Unauthenticated Public Providers:**
   - **MOEX ISS API:** Official unauthenticated JSON REST endpoints (`iss.moex.com`) for bond specifications, quotes, and bondization cash flows.
   - **SPB Exchange:** Public listing CSV ingestion and public disclosure feed tracking.
   - **ГИР БО (bo.nalog.gov.ru):** Official public accounting reports (Form 1 & Form 2) by issuer INN.
+  - **e-disclosure.ru / MOEX News:** Public corporate disclosure feeds and material facts.
 
 ---
 
 ## BDD Test Suite (Gherkin / Godog)
 
-The project follows Behavior-Driven Development (BDD). Scenarios are defined in `.feature` files (30 scenarios, 156 steps):
+The project follows Behavior-Driven Development (BDD). Scenarios are defined in `.feature` files (38 scenarios, 200+ steps):
 
 - `features/bond_market_data.feature`: Live market quotes, YTM, liquidity scoring, previous-close fallback, and adaptive cache TTL.
 - `features/bonds_on_demand.feature`: On-demand bond queries, searches, and calendar payments.
 - `features/bonds_subscription.feature`: User subscriptions, scheduled daily digests, and placement alerts.
 - `features/dual_exchange_providers.feature`: Dual-exchange data ingestion and resolution.
 - `features/issuer_balance_sheet.feature`: Issuer balance sheets, debt multiples, INN checksum validation, and risk scoring.
+- `features/material_facts.feature`: Corporate disclosure classification, `/facts` lookup, caching, and proactive push alerts.
 - `features/webhook_security.feature`: Fail-closed webhook security and endpoint method enforcement.
 
 ### Running BDD Tests
@@ -63,16 +66,18 @@ go test -v -count=1 ./tests/bdd
 │   ├── bonds_subscription.feature
 │   ├── dual_exchange_providers.feature
 │   ├── issuer_balance_sheet.feature
+│   ├── material_facts.feature
 │   └── webhook_security.feature
 ├── internal/
-│   ├── domain/                     # Core domain entities (Bond, IssuerBalance, MarketData, Payment)
-│   ├── provider/                   # Unauthenticated market data & financials providers
+│   ├── domain/                     # Core domain entities (Bond, IssuerBalance, MaterialFact, MarketData, Payment)
+│   ├── provider/                   # Unauthenticated market data, financials & disclosure providers
 │   │   ├── moex/                   # MOEX ISS REST client
 │   │   ├── spbe/                   # SPB Exchange public feeds
 │   │   ├── bfo/                    # FNS GBO (bo.nalog.gov.ru) client
+│   │   ├── edisclosure/            # e-disclosure.ru & MOEX News disclosure feed client
 │   │   └── composite/              # Multi-exchange federated provider
-│   ├── service/                    # Application services (BondService, FinancialsService, Sub, Notifier)
-│   ├── store/                      # Storage abstraction & in-memory caches (MarketData, Financials)
+│   ├── service/                    # Application services (BondService, FinancialsService, FactsService, Sub, Notifier)
+│   ├── store/                      # Storage abstraction & in-memory caches (MarketData, Financials, Facts)
 │   └── telegram/                   # Webhook parser, command handlers, and MarkdownV2 formatters
 ├── scripts/                        # Sanity check & Cloud Run deployment automation (.ps1 / .sh)
 ├── tests/
@@ -81,6 +86,7 @@ go test -v -count=1 ./tests/bdd
 ├── Dockerfile                      # Ultra-light Alpine multi-stage build (<20 MB)
 └── go.mod
 ```
+
 
 ---
 
