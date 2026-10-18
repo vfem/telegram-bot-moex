@@ -1,9 +1,10 @@
 # STAGE-00: Sanity Check & Baseline Infrastructure Verification
 
 > **Stage ID:** `STAGE-00`  
-> **Component:** `cmd/bot`, `Dockerfile`, GCP Cloud Run, Telegram Webhook, Public API Probers  
+> **Component:** `cmd/bot`, `Dockerfile`, GCP Cloud Run, Cloudflare WIF Edge Proxy, Telegram Webhook, Public API Probers  
 > **Priority:** P0 (Blocking Prerequisite)  
 > **Objective:** Подтвердить работоспособность всех существующих движущихся частей системы перед реализацией новых фич.  
+> **Status:** ✅ Завершено
 
 ---
 
@@ -11,10 +12,10 @@
 
 Перед тем как вносить изменения и добавлять новые модули (рыночные данные, баланс, факты), критически важно убедиться, что:
 1. Текущий код собирается локально и пакуется в минимальный рабочий Docker-образ.
-2. Внешние публичные API (MOEX ISS, SPB Exchange, bo.nalog.ru) доступны по сети без сетевых ограничений и блокировок.
-3. Бот успешно развернут в облаке (**Google Cloud Run**) в рамках бесплатного тарифа ($0/мес).
+2. Внешние публичные API (MOEX ISS, SPB Exchange, bo.nalog.gov.ru) доступны по сети без сетевых ограничений и блокировок.
+3. Бот успешно развернут в облаке (**Google Cloud Run**) в рамках бесплатного тарифа (\$0/мес).
 4. Вебхук Telegram защищен секретным токеном (`X-Telegram-Bot-Api-Secret-Token`) и успешно обрабатывает входящие сообщения от Telegram API.
-5. Сервер отдает статус `200 OK` на `/healthz`, а Cloud Scheduler может триггерить `/cron/daily-digest`.
+5. Сервер отдает статус `200 OK` на `/health` и `/healthz`, а Cloud Scheduler может триггерить `/cron/daily-digest`.
 
 ---
 
@@ -61,8 +62,8 @@
     `GET https://iss.moex.com/iss/statistics/engines/stock/markets/bonds/bondization/SU26238RMFS4.json?iss.meta=off` (статус 200, купоны присутствуют).
   - **SPB Exchange Listing:**  
     `GET https://spbexchange.ru/ru/stocks/inostrannye/spisok.aspx` (публичный листинг доступен).
-  - **ГИР БО (ФНС bo.nalog.ru) - подготовка к MVP-2:**  
-    `GET https://bo.nalog.ru/` (сервер доступен по HTTPS без блокировок).
+  - **ГИР БО (ФНС bo.nalog.gov.ru) - подготовка к MVP-2:**  
+    `GET https://bo.nalog.gov.ru/` (сервер доступен по HTTPS без блокировок).
 - **Критерий приемки (DoD):** Все HTTP-запросы возвращают `200 OK` с задержкой < 1.5 сек.
 
 ---
@@ -114,12 +115,13 @@
 - **Цель:** Создать единую утилиту для повторной проверки системы в 1 клик.
 - **Файл:** `scripts/sanity_check.ps1` (для Windows/PowerShell) и `scripts/sanity_check.sh` (для Linux/macOS).
 - **Скрипт проверяет:**
-  1. `[1/6]` Прохождение юнит- и BDD-тестов (`go test -count=1 ./tests/bdd`).
-  2. `[2/6]` Компиляция бинарника (`go build ./cmd/bot`).
-  3. `[3/6]` Доступность MOEX ISS API в реальном времени.
-  4. `[4/6]` Валидность токена бота через `https://api.telegram.org/bot<TOKEN>/getMe`.
-  5. `[5/6]` Доступность эндпоинта `/healthz`.
-  6. `[6/6]` Эмуляция команды `/bond SU26238RMFS4` через симулированный webhook payload.
+  0. `[0]` Сканирование репозитория и git-истории на утечки секретов (`gitleaks`).
+  1. `[1]` Прохождение BDD-тестов (`go test -count=1 ./tests/bdd`).
+  2. `[2]` Компиляция бинарника (`go build ./cmd/bot`).
+  3. `[3]` Доступность MOEX ISS API и живой интеграционный тест (`go test -tags=integration ./tests/integration`).
+  4. `[4]` Валидность токена бота через `https://api.telegram.org/bot<TOKEN>/getMe` (опционально, если задан `TELEGRAM_BOT_TOKEN`).
+  5. `[5]` Доступность удаленного эндпоинта `/health` / `/healthz` с OIDC-токеном (опционально, если задан `CLOUD_RUN_URL`).
+  6. `[6]` Проверка защиты `/webhook`: отклонение запроса без секрета (`401/403`) и успешный ответ `200 OK` с заголовком `X-Telegram-Bot-Api-Secret-Token`.
 - **Критерий приемки (DoD):** Скрипт выдает `✅ ALL SANITY CHECKS PASSED`.
 
 ---
@@ -144,10 +146,10 @@
 
 ---
 
-## 4. Чек-лист готовности к переходу на MVP-1
+## 4. Чек-лист готовности к переходу на MVP-1 (✅ Выполнено)
 
-- [ ] Все BDD тесты проходят локально (`10 scenarios, 53 steps passed`).
-- [ ] Сервер развернут на Cloud Run и доступен по HTTPS.
-- [ ] MOEX ISS отвечает актуальными данными.
-- [ ] Вебхук настроен с проверкой секретного токена.
-- [ ] Бот ответил в реальном Telegram-чате на тестовую команду `/bond SU26238RMFS4`.
+- [x] Все BDD тесты проходят локально (`30 scenarios, 156 steps passed`).
+- [x] Сервер развернут на Cloud Run и доступен по HTTPS (за защитой Cloudflare WIF Edge Proxy).
+- [x] MOEX ISS и ГИР БО ФНС отвечают актуальными данными.
+- [x] Вебхук настроен с проверкой секретного токена (`X-Telegram-Bot-Api-Secret-Token`).
+- [x] Бот ответил в реальном Telegram-чате на тестовую команду `/bond SU26238RMFS4`.

@@ -2,14 +2,14 @@
 
 > **Project:** MOEX & SPB Bonds Telegram Bot  
 > **Target Cost:** **\$0.00 / month** (100% within Google Cloud Free Tier)  
-> **Status:** Stage 0 & MVP-1 Deployment Ready  
+> **Status:** Stage 0, MVP-1 & MVP-2 Deployment Ready  
 > **Related Docs:** [`ROADMAP.md`](ROADMAP.md) • [`MVP_STAGES.md`](MVP_STAGES.md) • [`FEATURES_DECOMPOSITION.md`](FEATURES_DECOMPOSITION.md) • [`AGENTS.md`](../AGENTS.md)
 
 ---
 
 ## 1. Executive Summary & Architecture Topology
 
-The **MOEX & SPB Bonds Telegram Bot** is built as an ultra-compact, serverless Go service hosted on **Google Cloud Platform (GCP) Cloud Run**. It relies entirely on unauthenticated public market data APIs (MOEX ISS, SPB Exchange) and communicates with users via the **Telegram Bot Webhook API**.
+The **MOEX & SPB Bonds Telegram Bot** is built as an ultra-compact, serverless Go service hosted on **Google Cloud Platform (GCP) Cloud Run**. It relies entirely on unauthenticated public market data and accounting APIs (MOEX ISS, SPB Exchange, FNS GBO `bo.nalog.gov.ru`) and communicates with users via the **Telegram Bot Webhook API** shielded by a **Cloudflare Worker WIF Edge Proxy**.
 
 ```mermaid
 flowchart TD
@@ -33,7 +33,7 @@ flowchart TD
     subgraph External ["Free Public Financial APIs"]
         Run -->|GET quotes, YTM, bondization| MOEX["🏛 MOEX ISS API<br/>(iss.moex.com)"]
         Run -->|GET listing feeds| SPBE["🌐 SPB Exchange<br/>(spbexchange.ru)"]
-        Run -.->|MVP-2: Form 1 & 2| BFO["📑 ГИР БО ФНС<br/>(bo.nalog.ru)"]
+        Run -->|GET Form 1 & 2 by INN| BFO["📑 ГИР БО ФНС<br/>(bo.nalog.gov.ru)"]
     end
 ```
 
@@ -41,11 +41,11 @@ flowchart TD
 
 ## 2. GCP Free Tier Mathematical Audit
 
-Google Cloud provides a **permanent monthly Free Tier** (not the expiring 90-day trial credit) for core serverless products. Below is the mathematical verification confirming that this project fits comfortably within the $0.00/month threshold.
+Google Cloud provides a **permanent monthly Free Tier** (not the expiring 90-day trial credit) for core serverless products. Below is the mathematical verification confirming that this project fits comfortably within the \$0.00/month threshold.
 
 ### 2.1. Cloud Run Free Tier vs. Actual Consumption
 
-| Metric | GCP Free Tier Quota (Monthly) | Bot Consumption per Unit | Monthly Free Capacity | Expected Usage (Stage 0 / MVP-1) | % of Free Tier Used |
+| Metric | GCP Free Tier Quota (Monthly) | Bot Consumption per Unit | Monthly Free Capacity | Expected Usage (Stage 0 / MVP-1 / MVP-2) | % of Free Tier Used |
 |---|---|---|---|---|---|
 | **Requests** | **2,000,000 requests** | 1 per Telegram message or cron | 2,000,000 requests | ~3,000 – 15,000 requests | **< 0.75%** |
 | **Compute (vCPU)** | **360,000 vCPU-seconds** | ~0.10s CPU active per request | 3,600,000 requests | ~1,500 vCPU-seconds | **< 0.42%** |
@@ -298,9 +298,10 @@ This changelog records deployments, configuration changes, and milestone rollout
 |---|---|---|---|---|
 | `v0.1.0-alpha` | 2026-10-06 | **Stage 0 (Sanity Check)** | Initial baseline serverless deployment, HTTP mux (`/healthz`, `/webhook`, `/cron/daily-digest`), secret token validation, Godog BDD tests. | ✅ `128Mi`, `min 0`, `max 2`, `concurrency 80` |
 | `v1.0.0` | 2026-10-06 | **MVP-1 (Live Market Data)** | Added live quotes (% & ₽), YTM, daily trading volume, bid-ask spread calculation, liquidity badges (`🔥/⚡️/⚠️/🛑`), and issuer INN extraction. Synchronous message dispatch for CPU throttling safety. | ✅ Confirmed fit within Free Tier (< 1% consumed) |
-| *Planned v2.0.0* | *Upcoming* | *MVP-2 (Balance Sheet)* | Ingestion of bo.nalog.ru (Form 1 & 2), 30-day balance cache, net debt & capital ratios. | Target: $0.00 / mo |
-| *Planned v3.0.0* | *Upcoming* | *MVP-3 (Facts & Ratings)* | Disclosure feed, credit ratings (AKRA/Expert RA), event alerts. | Target: $0.00 / mo |
-| *Planned v4.0.0* | *Upcoming* | *MVP-4 (Decision Memo)* | Consolidated `/memo` command, Risk Traffic Light, inline keyboard pagination. | Target: $0.00 / mo |
+| `v1.1.0` | 2026-10-08 | **Security & Edge Proxy Hardening** | Cloudflare Worker WIF edge proxy (`--no-allow-unauthenticated`), Secret Manager (`--set-secrets`), dedicated least-privilege `bot-runtime` & `scheduler-invoker` SAs, Gitleaks CI scan, fail-closed webhook & POST-only cron. | ✅ Edge drops unauthorized traffic at \$0.00 |
+| `v1.2.0` | 2026-10-14 | **MVP-2 (Balance Sheet)** | Implemented `/balance` & `/bal` commands, FNS GBO (`bo.nalog.gov.ru`) Form 1 & 2 ingestion, 30-day positive / 2-hour negative cache, `singleflight` deduplication, INN checksum validation, and 12 BDD scenarios. | ✅ Confirmed fit within Free Tier (\$0.00 / mo) |
+| *Planned v3.0.0* | *Upcoming* | *MVP-3 (Facts & Ratings)* | Disclosure feed, credit ratings (AKRA/Expert RA), event alerts. | Target: \$0.00 / mo |
+| *Planned v4.0.0* | *Upcoming* | *MVP-4 (Decision Memo)* | Consolidated `/memo` command, Risk Traffic Light, inline keyboard pagination. | Target: \$0.00 / mo |
 
 ---
 

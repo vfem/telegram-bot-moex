@@ -3,7 +3,8 @@
 > **Feature ID:** `FEAT-02`  
 > **Component:** `internal/provider/bfo`, `internal/domain`, `internal/service`, `internal/telegram`, `internal/store/memory`  
 > **Priority:** P0 (Must Have)  
-> **Target Cost:** $0.00 / month (Официальный API ФНС РФ bo.nalog.gov.ru)  
+> **Target Cost:** \$0.00 / month (Официальный API ФНС РФ bo.nalog.gov.ru)  
+> **Status:** ✅ Завершено (All code review findings F1–F7 and 12 BDD scenarios verified)
 
 ---
 

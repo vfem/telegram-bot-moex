@@ -1,17 +1,18 @@
-# Code Review — Uncommitted Changes (FEAT-02: Issuer Balance Sheet)
+# Code Review — FEAT-02: Issuer Balance Sheet (Resolved)
 
 | | |
 |---|---|
 | **Date** | 2026-10-14 |
 | **Base** | `39244b1` (feat(security): harden cloud run secrets…) |
-| **Scope** | 11 modified + 11 new files (~244 lines added to tracked files, plus new packages) |
-| **Verdict** | ⚠️ **Request changes.** Fix 2 must-fix issues before committing. Everything else can be a follow-up. |
+| **Resolution Commit** | `dcd08f8` (`feat(balance): implement FEAT-02 issuer balance sheet with BDD review fixes`) |
+| **Scope** | 11 modified + 11 new files (`internal/domain/balance.go`, `internal/provider/bfo`, `internal/service/financials_service.go`, `internal/store/memory/financials_cache.go`, `features/issuer_balance_sheet.feature`) |
+| **Verdict** | ✅ **All findings (F1–F7) and all 8 test coverage gaps resolved and verified.** |
 
 ---
 
 ## 1. Summary of the Change
 
-This adds `/balance <ISIN|ИНН|Тикер>` (alias `/bal`). It fetches the issuer's RSBU Form 1 and Form 2 figures from ГИР БО (`bo.nalog.gov.ru`), computes Net Debt and the Net Debt / Equity ratio, assigns a risk level, caches the result for 30 days, and renders it as MarkdownV2.
+This adds `/balance <ISIN|ИНН|Тикер>` (alias `/bal`). It fetches the issuer's RSBU Form 1 and Form 2 figures from ГИР БО (`bo.nalog.gov.ru`), computes Net Debt and the Net Debt / Equity ratio, assigns a risk level, caches the result for 30 days (with a 2-hour negative cache and `singleflight` deduplication), and renders it as MarkdownV2.
 
 | Layer | Files |
 |---|---|
@@ -31,9 +32,9 @@ This adds `/balance <ISIN|ИНН|Тикер>` (alias `/bal`). It fetches the iss
 | `go build ./...` | ✅ Pass |
 | `go vet ./...` | ✅ Pass |
 | `go test -count=1 ./internal/...` | ✅ Pass (domain, bfo, moex, service, memory, telegram) |
-| `go test -count=1 ./tests/bdd` | ✅ Pass |
-| `go test -tags integration -run TestLiveBFOBalance ./tests/integration` | ✅ Pass (live data: Gazprom 2025: assets 25 736.3 bn ₽, ratio 0.24; OFZ shown as sovereign) |
-| `gofmt -l .` | ❌ Not clean. Changed files: `internal/domain/balance_test.go`, `internal/provider/bfo/client.go`, `internal/telegram/bot.go`, `tests/bdd/test_context.go`. (`moex/client.go` and `spbe/client.go` were already unformatted before this change.) |
+| `go test -count=1 ./tests/bdd` | ✅ Pass (30 scenarios, 156 steps) |
+| `go test -tags integration -run TestLiveBFOBalance ./tests/integration` | ✅ Pass (live data: Gazprom 2025: assets 25.7 трлн ₽, ratio 0.24; OFZ shown as sovereign) |
+| `gofmt -l .` | ✅ Clean across all packages |
 
 The live run confirms that the ×1000 scaling (ОКЕИ 384, thousands of rubles) is correct: Gazprom's standalone RSBU assets come out at about 25.7 trillion ₽.
 

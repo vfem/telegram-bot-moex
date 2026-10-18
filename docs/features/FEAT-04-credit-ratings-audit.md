@@ -113,7 +113,7 @@
       | Agency   | Эксперт РА |
       | Rating   | ruA-       |
       | Outlook  | Стабильный |
-    And the latest audit for INN "7708304940" was issued by "Мариллион":
+    And the latest audit for INN "7708304947" was issued by "Мариллион":
       | Opinion  | Безоговорочно положительное |
     When the user requests rating details for "RU000A107456"
     Then the response should show rating "ruA- (Эксперт РА) • Стабильный"

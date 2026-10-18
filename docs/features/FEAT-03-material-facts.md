@@ -103,7 +103,7 @@
 - **Файлы:** `internal/service/facts_service.go`, `internal/telegram/bot.go`
 - **Вид вывода:**
   ```text
-  ⚠️ Существенные факты: ПАО «ЕвроТранс» (ИНН 7708304940)
+  ⚠️ Существенные факты: ПАО «ЕвроТранс» (ИНН 7708304947)
 
   • 02.10.2026 14:15 [ℹ️ Купон]:
     Выплата купонного дохода по облигациям серии БО-001Р-03 в полном объеме
@@ -139,7 +139,7 @@
 - **Сценарий:**
   ```gherkin
   Scenario: Critical default fact triggers warning severity
-    Given a new disclosure fact for issuer INN "7708304940":
+    Given a new disclosure fact for issuer INN "7708304947":
       | Title       | Неисполнение обязательств эмитента по выплате купона |
       | PublishedAt | 2026-10-06                                           |
     When the facts classifier processes the announcement

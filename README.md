@@ -12,11 +12,11 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 
 ## Features
 
-- **Bond Profiles & Passports:** Instant lookup by ISIN, ticker, or Russian issuer name (`/bond SU26238RMFS4`, `/bond ЕвроТранс`).
+- **Bond Profiles & Passports:** Instant lookup by ISIN, ticker, or Russian issuer name (`/bond SU26238RMFS4`, `/bond ЕвроТранс`, alias `/b`) with live quotes (% and currency), YTM, duration, daily volume, bid-ask spread, and liquidity scoring (`🔥 Высокая` / `⚡️ Средняя` / `⚠️ Низкая` / `🛑 Неликвид`).
 - **Issuer Balance Sheets & Financial Health:** Instant accounting summary from official FNS GBO (`/balance RU000A107456`, `/bal 7736050003`) with assets, equity, total/net debt, Debt/Equity ratio, risk scoring (🟢 Low / 🟡 Moderate / 🔴 High), revenue, net profit, and auditor.
 - **Payment Calendars:**
   - `/today` — view coupon and amortization payments scheduled for today across watched bonds.
-  - `/calendar 2026-10-15` — inspect all scheduled cash flows for any given date.
+  - `/calendar 2026-10-15` (alias `/cal`, supports `YYYY-MM-DD` and `DD.MM`) — inspect all scheduled cash flows for any given date.
 - **Custom Groups & Portfolios:**
   - Create and manage bond collections: `/group create ОФЗ`, `/group add ОФЗ SU26238RMFS4`, `/group show ОФЗ`.
 - **Subscriptions & Push Digests:**
@@ -32,18 +32,19 @@ Designed for low-load personal or group use on **Google Cloud Platform (GCP)** w
 
 ## BDD Test Suite (Gherkin / Godog)
 
-The project follows Behavior-Driven Development (BDD). Scenarios are defined in `.feature` files:
+The project follows Behavior-Driven Development (BDD). Scenarios are defined in `.feature` files (30 scenarios, 156 steps):
 
+- `features/bond_market_data.feature`: Live market quotes, YTM, liquidity scoring, previous-close fallback, and adaptive cache TTL.
 - `features/bonds_on_demand.feature`: On-demand bond queries, searches, and calendar payments.
 - `features/bonds_subscription.feature`: User subscriptions, scheduled daily digests, and placement alerts.
 - `features/dual_exchange_providers.feature`: Dual-exchange data ingestion and resolution.
-- `features/issuer_balance_sheet.feature`: Issuer balance sheets, debt multiples, and risk scoring.
+- `features/issuer_balance_sheet.feature`: Issuer balance sheets, debt multiples, INN checksum validation, and risk scoring.
 - `features/webhook_security.feature`: Fail-closed webhook security and endpoint method enforcement.
 
 ### Running BDD Tests
 
 ```bash
-go test -v ./tests/bdd
+go test -v -count=1 ./tests/bdd
 ```
 
 ---
@@ -51,28 +52,32 @@ go test -v ./tests/bdd
 ## Project Structure
 
 ```text
+├── cloudflare-proxy/               # Cloudflare Worker zero-cost edge shield (WIF OIDC to Cloud Run)
 ├── cmd/
 │   └── bot/
-│       └── main.go                 # Webhook and cron HTTP server
+│       └── main.go                 # Webhook, health, and cron HTTP server
+├── docs/                           # Roadmap, MVP stages, feature specs, and deployment audit
 ├── features/                       # Gherkin BDD specification files
+│   ├── bond_market_data.feature
 │   ├── bonds_on_demand.feature
 │   ├── bonds_subscription.feature
 │   ├── dual_exchange_providers.feature
 │   ├── issuer_balance_sheet.feature
 │   └── webhook_security.feature
 ├── internal/
-│   ├── domain/                     # Core domain entities (Bond, Balance, MarketData, Payment)
+│   ├── domain/                     # Core domain entities (Bond, IssuerBalance, MarketData, Payment)
 │   ├── provider/                   # Unauthenticated market data & financials providers
 │   │   ├── moex/                   # MOEX ISS REST client
 │   │   ├── spbe/                   # SPB Exchange public feeds
 │   │   ├── bfo/                    # FNS GBO (bo.nalog.gov.ru) client
 │   │   └── composite/              # Multi-exchange federated provider
-│   ├── service/                    # Application services (bonds, financials, subscriptions)
-│   ├── store/                      # Storage abstraction & in-memory / Firestore store
-│   └── telegram/                   # Webhook parser, command handlers, and formatters
+│   ├── service/                    # Application services (BondService, FinancialsService, Sub, Notifier)
+│   ├── store/                      # Storage abstraction & in-memory caches (MarketData, Financials)
+│   └── telegram/                   # Webhook parser, command handlers, and MarkdownV2 formatters
+├── scripts/                        # Sanity check & Cloud Run deployment automation (.ps1 / .sh)
 ├── tests/
 │   ├── bdd/                        # Godog BDD test suite & step definitions
-│   └── integration/                # Live network probe integration tests
+│   └── integration/                # Live network probe integration tests (-tags=integration)
 ├── Dockerfile                      # Ultra-light Alpine multi-stage build (<20 MB)
 └── go.mod
 ```
@@ -81,19 +86,19 @@ go test -v ./tests/bdd
 
 ## Local Development
 
-1. Copy `.env.example` to `.env` and fill in your `TELEGRAM_BOT_TOKEN`.
+1. Copy `.env.example` to `.env` and fill in your `TELEGRAM_BOT_TOKEN` and `TELEGRAM_SECRET_TOKEN`.
 2. Run locally:
    ```bash
    go run ./cmd/bot
    ```
 3. Health check:
    ```bash
-   curl http://localhost:8080/healthz
+   curl http://localhost:8080/health
    ```
 
 ---
 
-## GCP Cloud Run Deployment ($0.00 / month Free Tier)
+## GCP Cloud Run Deployment (\$0.00 / month Free Tier)
 
 The bot is engineered to run 100% within the **GCP Free Tier** (2M requests, 360k vCPU-s, 180k GiB-s, 1GB egress per month).
 
@@ -102,7 +107,8 @@ See the full [**GCP Cloud Run Deployment Guide & Free Tier Audit**](docs/DEPLOYM
 ### Deployment Options
 
 1. **GitHub Actions CI/CD (Recommended):**  
-   Configure repository secrets (`GCP_PROJECT_ID`, `GCP_SA_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_SECRET_TOKEN`). Every push to `master` automatically runs tests, builds, and deploys to Cloud Run. See [GitHub Actions CI/CD Setup](docs/DEPLOYMENT.md#5-github-actions-cicd-automation).
+   - **CI (`ci.yml`):** Every push and PR to `master` automatically runs Gitleaks secret scanning, unit tests, BDD scenarios (`tests/bdd`), and binary compilation.
+   - **CD (`deploy.yml`):** Triggered manually via `workflow_dispatch` on `master` (protected `generic-env` environment). Authenticates to GCP via **keyless Workload Identity Federation (WIF / OIDC)**, mounts tokens from **Google Secret Manager** (`--set-secrets`), deploys to private Cloud Run behind the Cloudflare Worker edge proxy, and configures Cloud Scheduler. See [GitHub Actions CI/CD Setup](docs/DEPLOYMENT.md#5-github-actions-cicd-automation).
 
 2. **Automated Scripts (Local / Shell):**
    ```powershell

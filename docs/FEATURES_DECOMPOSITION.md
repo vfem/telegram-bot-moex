@@ -3,13 +3,13 @@
 > **Project:** MOEX & SPB Bonds Telegram Bot  
 > **Initiative:** Decision Support & Consolidated Issuer Memo ("Единое окно инвестора")  
 > **Reference Document:** [`docs/ROADMAP.md`](ROADMAP.md)  
-> **Status:** Specification Complete • Ready for Implementation  
+> **Status:** In Progress (`STAGE-00`, `FEAT-01`, `FEAT-02` Completed • `FEAT-03`..`FEAT-05` Planned)  
 
 ---
 
 ## 1. Обзор архитектурной декомпозиции
 
-На основе анализа пользовательского отзыва разработана модульная система из **5 функциональных фич (Features)**, разбитых на **30 атомарных подзадач (Sub-tasks)**.
+На основе анализа пользовательского отзыва разработана модульная система из **5 функциональных фич (Features)**, разбитых на **30 атомарных подзадач (Sub-tasks)** (плюс базовый инфраструктурный этап `STAGE-00` из 6 задач).
 
 Каждая подзадача полностью специфицирована: указаны входные/выходные данные, изменяемые пакеты, алгоритмы и критерии готовности (Definition of Done).
 
@@ -21,7 +21,7 @@ graph TD
 
     subgraph Features ["Функциональные блоки (Features)"]
         F1["FEAT-01: Котировки и ликвидность<br/>(MOEX ISS Marketdata)"]
-        F2["FEAT-02: Итоговый баланс<br/>(ФНС ГИР БО bo.nalog.ru)"]
+        F2["FEAT-02: Итоговый баланс<br/>(ФНС ГИР БО bo.nalog.gov.ru)"]
         F3["FEAT-03: Существенные факты<br/>(e-disclosure / MOEX RSS)"]
         F4["FEAT-04: Рейтинги и аудит<br/>(АКРА / Эксперт РА / BFO)"]
     end
@@ -45,14 +45,14 @@ graph TD
 
 ## 2. Матрица фич и спецификаций
 
-| Feature ID | Название | Назначение | Документ спецификации | Задач | Приоритет |
-|---|---|---|---|---|---|
-| **STAGE-00** | **Sanity Check & Infrastructure** | Развертывание бота, проверка API, Cloud Run, секретов и вебхука | [`STAGE-00-sanity-check.md`](features/STAGE-00-sanity-check.md) | 6 | P0 (Prerequisite) |
-| **FEAT-01** | **Market Data & Liquidity** | Текущие котировки, YTM, дневной оборот, спред и скоринг ликвидности | [`FEAT-01-market-data-liquidity.md`](features/FEAT-01-market-data-liquidity.md) | 6 | P0 (Must) |
-| **FEAT-02** | **Issuer Balance Sheet** | Итоговый баланс (Активы, Капитал, Чистый долг, Выручка, Прибыль) из ФНС | [`FEAT-02-balance-sheet.md`](features/FEAT-02-balance-sheet.md) | 7 | P0 (Must) |
-| **FEAT-03** | **Material Facts & Events** | Лента существенных фактов: дефолты, оферты, решения СД/ВОСА, суды | [`FEAT-03-material-facts.md`](features/FEAT-03-material-facts.md) | 6 | P1 (Should) |
-| **FEAT-04** | **Credit Ratings & Audit** | Кредитные рейтинги (АКРА, Эксперт РА), надежность аудитора и тип заключения | [`FEAT-04-credit-ratings-audit.md`](features/FEAT-04-credit-ratings-audit.md) | 5 | P1 (Should) |
-| **FEAT-05** | **Decision Memo UX** | Команда `/memo`, «Светофор рисков» (🟢/🟡/🔴), Telegram Inline-вкладки | [`FEAT-05-decision-memo-ux.md`](features/FEAT-05-decision-memo-ux.md) | 6 | P0 (Must) |
+| Feature ID | Название | Назначение | Документ спецификации | Задач | Приоритет | Статус |
+|---|---|---|---|---|---|---|
+| **STAGE-00** | **Sanity Check & Infrastructure** | Развертывание бота, проверка API, Cloud Run, секретов и вебхука | [`STAGE-00-sanity-check.md`](features/STAGE-00-sanity-check.md) | 6 | P0 (Prerequisite) | ✅ Завершено |
+| **FEAT-01** | **Market Data & Liquidity** | Текущие котировки, YTM, дневной оборот, спред и скоринг ликвидности | [`FEAT-01-market-data-liquidity.md`](features/FEAT-01-market-data-liquidity.md) | 6 | P0 (Must) | ✅ Завершено |
+| **FEAT-02** | **Issuer Balance Sheet** | Итоговый баланс (Активы, Капитал, Чистый долг, Выручка, Прибыль) из ФНС | [`FEAT-02-balance-sheet.md`](features/FEAT-02-balance-sheet.md) | 7 | P0 (Must) | ✅ Завершено |
+| **FEAT-03** | **Material Facts & Events** | Лента существенных фактов: дефолты, оферты, решения СД/ВОСА, суды | [`FEAT-03-material-facts.md`](features/FEAT-03-material-facts.md) | 6 | P1 (Should) | ⏳ Запланировано |
+| **FEAT-04** | **Credit Ratings & Audit** | Кредитные рейтинги (АКРА, Эксперт РА), надежность аудитора и тип заключения | [`FEAT-04-credit-ratings-audit.md`](features/FEAT-04-credit-ratings-audit.md) | 5 | P1 (Should) | ⏳ Запланировано |
+| **FEAT-05** | **Decision Memo UX** | Команда `/memo`, «Светофор рисков» (🟢/🟡/🔴), Telegram Inline-вкладки | [`FEAT-05-decision-memo-ux.md`](features/FEAT-05-decision-memo-ux.md) | 6 | P0 (Must) | ⏳ Запланировано |
 
 ---
 
@@ -60,7 +60,7 @@ graph TD
 
 ### STAGE-00: Sanity Check & Инфраструктура
 - [x] `TASK-00-01`: Проверка локальной компиляции бинарника и сборки Docker-образа (Alpine <20MB, `.dockerignore`)
-- [x] `TASK-00-02`: Зондирование сетевой доступности внешних API (MOEX ISS, SPBE, bo.nalog.ru)
+- [x] `TASK-00-02`: Зондирование сетевой доступности внешних API (MOEX ISS, SPBE, bo.nalog.gov.ru)
 - [x] `TASK-00-03`: Развертывание в GCP Cloud Run: аудит Free Tier и скрипты автоматизации (`deploy_cloud_run.ps1` / `.sh`)
 - [x] `TASK-00-04`: Регистрация и проверка безопасности вебхука Telegram (`secret_token` и синхронная обработка для Cloud Run)
 - [x] `TASK-00-05`: Автоматизированный скрипт смоук-тестирования системы (`scripts/sanity_check.ps1` / `.sh`)

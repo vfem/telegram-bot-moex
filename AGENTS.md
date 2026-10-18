@@ -12,7 +12,7 @@ Welcome! This file (`AGENTS.md`) defines the operating principles, architectural
 - **Data Policy:** 100% free, unauthenticated public data providers:
   - **MOEX ISS API** (`iss.moex.com`): Quotes, specifications, and coupon cash flows.
   - **SPB Exchange**: Public listing CSV ingestion and feeds.
-  - **ГИР БО (bo.nalog.ru)**: Official public accounting reports (Form 1 & Form 2) by issuer INN.
+  - **ГИР БО (bo.nalog.gov.ru)**: Official public accounting reports (Form 1 & Form 2) by issuer INN.
   - **e-disclosure.ru / MOEX News**: Public corporate actions and disclosures.
 
 ---
@@ -53,17 +53,20 @@ The project maintains structured living documentation in [`docs/`](docs/):
 
 ### Directory Layout:
 ```text
+├── cloudflare-proxy/       # Cloudflare Worker edge security shield (WIF OIDC to Cloud Run)
 ├── cmd/bot/                # Entrypoint, HTTP mux, webhooks, and cron handlers
 ├── features/               # Gherkin BDD specification files (.feature)
 ├── internal/
 │   ├── domain/             # Pure domain entities (Bond, MarketData, IssuerBalance, Payment)
 │   ├── provider/           # External API adapters (moex, spbe, bfo, edisclosure, composite)
-│   ├── service/            # Application logic (BondService, SubscriptionService, Notifier)
+│   ├── service/            # Application logic (BondService, FinancialsService, SubscriptionService, Notifier)
 │   ├── store/              # Storage interfaces & in-memory / Firestore implementations
 │   └── telegram/           # Webhook parsing, command routing, keyboards, formatters
-├── scripts/                # Sanity and deployment scripts (sanity_check.ps1 / .sh)
-├── tests/bdd/              # Godog BDD test suite and step definitions
-└── docs/                   # Specifications, roadmaps, and task decompositions
+├── scripts/                # Sanity and deployment scripts (sanity_check.ps1 / .sh, deploy_cloud_run.ps1 / .sh)
+├── tests/
+│   ├── bdd/                # Godog BDD test suite and step definitions
+│   └── integration/        # Live network probe integration tests (-tags=integration)
+└── docs/                   # Specifications, roadmaps, deployment guide, and task decompositions
 ```
 
 ### Development Rules:
@@ -78,8 +81,8 @@ The project maintains structured living documentation in [`docs/`](docs/):
    - Domain models in `internal/domain` must not import transport, HTTP, or storage packages.
 3. **Caching Strategy:**
    - Respect external services and free quotas by caching:
-     - Real-time market data: 2 minutes TTL.
+     - Real-time market data: 2 minutes TTL during trading hours (09:50–23:50 MSK) / 60 minutes off-hours.
      - Corporate disclosures & facts: 30–60 minutes TTL.
-     - Financial statements (Balance Sheet): 30 days TTL.
+     - Financial statements (Balance Sheet): 30 days TTL (positive) / 2 hours TTL (negative cache).
 4. **Sanity Check Pre-flight:**
-   - Execute [`scripts/sanity_check.ps1`](scripts/sanity_check.ps1) (Windows) or [`scripts/sanity_check.sh`](scripts/sanity_check.sh) (Linux) to verify build, tests, and live network reachability to MOEX ISS.
+   - Execute [`scripts/sanity_check.ps1`](scripts/sanity_check.ps1) (Windows) or [`scripts/sanity_check.sh`](scripts/sanity_check.sh) (Linux) to verify secret scan, build, BDD tests, and live network reachability to MOEX ISS & FNS GBO.
